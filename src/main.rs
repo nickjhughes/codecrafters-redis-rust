@@ -1,7 +1,7 @@
 use anyhow::Context;
 use std::{
     io,
-    net::{Ipv4Addr, SocketAddrV4},
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
 };
 use tokio::{
     io::AsyncWriteExt,
@@ -44,11 +44,13 @@ impl Response {
     }
 }
 
-async fn handle_connection(mut stream: TcpStream) {
-    stream
-        .readable()
-        .await
-        .expect("could not wait for stream to be readable");
+async fn handle_connection(mut stream: TcpStream, socket: SocketAddr) {
+    // stream
+    //     .readable()
+    //     .await
+    //     .expect("could not wait for stream to be readable");
+
+    eprintln!("New connection from {:?}", socket);
 
     let mut buf = vec![0; 1024];
     loop {
@@ -63,12 +65,13 @@ async fn handle_connection(mut stream: TcpStream) {
                     .context("request should be valid utf-8")
                     .unwrap();
                 if let Ok(request) = Request::deserialize(request_str) {
-                    dbg!(&request);
+                    eprintln!("Got request {:?} from {:?}", &request, socket);
                     if let Ok(response) = request.generate_response() {
                         stream
                             .write(response.serialize().as_bytes())
                             .await
                             .expect("failed to write to stream");
+                        eprintln!("Sent response {:?} to {:?}", response, socket);
                     } else {
                         eprintln!("failed to generate a response to {:?}", request)
                     }
@@ -93,9 +96,8 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         let (stream, socket) = listener.accept().await?;
-        eprintln!("New connection from {:?}", socket);
         tokio::spawn(async move {
-            handle_connection(stream).await;
+            handle_connection(stream, socket).await;
         });
     }
 }
