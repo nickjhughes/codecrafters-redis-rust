@@ -4,7 +4,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
 };
 use tokio::{
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 
@@ -52,9 +52,9 @@ async fn handle_connection(mut stream: TcpStream, socket: SocketAddr) {
 
     eprintln!("New connection from {:?}", socket);
 
-    let mut buf = [0; 1024];
+    let mut buf = [0; 512];
     loop {
-        match stream.try_read(&mut buf) {
+        match stream.read(&mut buf).await {
             Ok(bytes_read) => {
                 eprintln!("Read {} bytes from {:?}", bytes_read, socket);
                 if bytes_read == 0 {
@@ -78,10 +78,6 @@ async fn handle_connection(mut stream: TcpStream, socket: SocketAddr) {
                 } else {
                     eprintln!("failed to parse request {:?}", request_str)
                 }
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                eprintln!("Would block...");
-                continue;
             }
             Err(e) => {
                 eprintln!("stream read error: {:?}", e);
