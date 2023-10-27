@@ -31,7 +31,7 @@ impl<'request, 'memory> Response<'request, 'memory> {
             },
             Response::Get(get_response) => match get_response {
                 GetResponse::Found(value) => RespValue::BulkString(value),
-                GetResponse::NotFound => RespValue::Null,
+                GetResponse::NotFound => RespValue::NullBulkString,
             },
         }
         .serialize()

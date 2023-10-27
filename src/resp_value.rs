@@ -7,6 +7,7 @@ pub enum RespValue<'data> {
     SimpleError(&'data str),
     Integer(i64),
     BulkString(&'data str),
+    NullBulkString,
     Array(Vec<RespValue<'data>>),
     Null,
     Boolean(bool),
@@ -26,6 +27,7 @@ impl<'data> RespValue<'data> {
             RespValue::SimpleError(_) => b'-',
             RespValue::Integer(_) => b':',
             RespValue::BulkString(_) => b'$',
+            RespValue::NullBulkString => panic!(),
             RespValue::Array(_) => b'*',
             RespValue::Null => b'_',
             RespValue::Boolean(_) => b'#',
@@ -45,6 +47,7 @@ impl<'data> RespValue<'data> {
             RespValue::SimpleError(_) => true,
             RespValue::Integer(_) => true,
             RespValue::BulkString(_) => true,
+            RespValue::NullBulkString => true,
             RespValue::Array(_) => false,
             RespValue::Null => true,
             RespValue::Boolean(_) => true,
@@ -71,6 +74,9 @@ impl<'data> RespValue<'data> {
                 output.extend_from_slice(s.len().to_string().as_bytes());
                 output.extend_from_slice(TERMINATOR);
                 output.extend_from_slice(s.as_bytes());
+            }
+            RespValue::NullBulkString => {
+                output.extend(b"-1");
             }
             RespValue::Array(elements) => {
                 output.extend_from_slice(elements.len().to_string().as_bytes());
