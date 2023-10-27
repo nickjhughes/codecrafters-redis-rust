@@ -56,6 +56,7 @@ async fn handle_connection(mut stream: TcpStream, socket: SocketAddr) {
     loop {
         match stream.try_read(&mut buf) {
             Ok(bytes_read) => {
+                eprintln!("Read {} bytes from {:?}", bytes_read, socket);
                 if bytes_read == 0 {
                     continue;
                 }
