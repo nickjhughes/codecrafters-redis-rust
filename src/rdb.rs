@@ -170,7 +170,7 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
     if &data[0..5] != b"REDIS" {
         anyhow::bail!("invalid magic string");
     }
-    let _version = std::str::from_utf8(&data[5..9])?.parse::<u16>()?;
+    let version = std::str::from_utf8(&data[5..9])?.parse::<u16>()?;
     eprintln!("File version: {}", version);
 
     let mut store = Store::default();
