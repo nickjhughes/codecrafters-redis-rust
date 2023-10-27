@@ -1,3 +1,4 @@
+use bytes::BytesMut;
 use std::{
     env::Args,
     net::{Ipv4Addr, SocketAddrV4},
@@ -10,37 +11,42 @@ use tokio::{
 
 use config::{Config, Parameter};
 use request::Request;
-use store::Store;
+use state::State;
 
 mod config;
 mod rdb;
 mod request;
 mod resp_value;
 mod response;
+mod state;
 mod store;
 
 const ADDRESS: Ipv4Addr = Ipv4Addr::LOCALHOST;
 const PORT: u16 = 6379;
 
-async fn handle_connection(mut stream: TcpStream, memory: Arc<Mutex<Store>>, config: Arc<Config>) {
-    let mut buf = [0; 512];
+async fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
+    let mut input_buf = [0; 512];
+    let mut output_buf = BytesMut::with_capacity(512);
     loop {
-        match stream.read(&mut buf).await {
+        match stream.read(&mut input_buf).await {
             Ok(bytes_read) => {
                 if bytes_read == 0 {
                     continue;
                 }
 
-                match Request::deserialize(&buf[0..bytes_read]) {
+                // TODO: Deal with incomplete frames of data
+
+                match Request::deserialize(&input_buf[0..bytes_read]) {
                     Ok(request) => {
-                        let response = memory
+                        output_buf.clear();
+                        state
                             .lock()
                             .expect("failed to get lock")
-                            .handle_request(&request, config.clone())
+                            .handle_request(&request)
                             .unwrap_or_else(|_| panic!("failed to handle request {:?}", request))
-                            .serialize();
+                            .serialize(&mut output_buf);
                         stream
-                            .write_all(&response)
+                            .write_all(&output_buf)
                             .await
                             .expect("failed to write to stream");
                     }
@@ -75,16 +81,14 @@ fn parse_args(args: Args) -> anyhow::Result<Config> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config = Arc::new(parse_args(std::env::args())?);
-    let memory = Arc::new(Mutex::new(Store::default()));
+    let state = Arc::new(Mutex::new(State::new(parse_args(std::env::args())?)));
 
     let listener = TcpListener::bind(SocketAddrV4::new(ADDRESS, PORT)).await?;
     loop {
         let (stream, _) = listener.accept().await?;
-        let thread_memory = memory.clone();
-        let thread_config = config.clone();
+        let state = state.clone();
         tokio::spawn(async move {
-            handle_connection(stream, thread_memory, thread_config).await;
+            handle_connection(stream, state).await;
         });
     }
 }

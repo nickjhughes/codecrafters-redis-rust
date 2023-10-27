@@ -1,3 +1,5 @@
+use bytes::{BufMut, BytesMut};
+
 const TERMINATOR: &[u8] = b"\r\n";
 
 #[derive(Debug, PartialEq, Clone)]
@@ -64,39 +66,39 @@ impl<'data> RespValue<'data> {
         }
     }
 
-    pub fn serialize(&self) -> Vec<u8> {
-        let mut output = vec![self.tag()];
+    pub fn serialize(&self, buf: &mut BytesMut) {
+        buf.put_u8(self.tag());
         match self {
             RespValue::SimpleString(s) | RespValue::SimpleError(s) => {
-                output.extend_from_slice(s.as_bytes());
+                buf.put(s.as_bytes());
             }
             RespValue::Integer(n) => {
-                output.extend_from_slice(n.to_string().as_bytes());
+                buf.put(n.to_string().as_bytes());
             }
             RespValue::BulkString(s) => {
-                output.extend_from_slice(s.len().to_string().as_bytes());
-                output.extend_from_slice(TERMINATOR);
-                output.extend_from_slice(s.as_bytes());
+                buf.put(s.len().to_string().as_bytes());
+                buf.put(TERMINATOR);
+                buf.put(s.as_bytes());
             }
             RespValue::NullBulkString | RespValue::NullArray => {
-                output.extend(b"-1");
+                buf.put(&b"-1"[..]);
             }
             RespValue::Array(elements) => {
-                output.extend_from_slice(elements.len().to_string().as_bytes());
-                output.extend_from_slice(TERMINATOR);
+                buf.put(elements.len().to_string().as_bytes());
+                buf.put(TERMINATOR);
                 for e in elements.iter() {
-                    output.extend_from_slice(&e.serialize());
+                    e.serialize(buf);
                 }
             }
             RespValue::Null => {}
             RespValue::Boolean(b) => {
-                output.push(if *b { b't' } else { b'f' });
+                buf.put_u8(if *b { b't' } else { b'f' });
             }
             RespValue::Double(f) => {
-                output.extend_from_slice(f.to_string().as_bytes());
+                buf.put(f.to_string().as_bytes());
             }
             RespValue::BigNumber(digits) => {
-                output.extend_from_slice(digits.as_bytes());
+                buf.put(digits.as_bytes());
             }
             RespValue::BulkError => todo!(),
             RespValue::VerbatimString => todo!(),
@@ -105,9 +107,8 @@ impl<'data> RespValue<'data> {
             RespValue::Push => todo!(),
         }
         if self.has_final_terminator() {
-            output.extend_from_slice(TERMINATOR);
+            buf.put(TERMINATOR);
         }
-        output
     }
 
     pub fn deserialize(data: &'data [u8]) -> anyhow::Result<(Self, &'data [u8])> {
@@ -309,6 +310,8 @@ fn find_terminator(data: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    use bytes::BytesMut;
+
     use super::{find_terminator, RespValue};
 
     #[test]
@@ -330,7 +333,9 @@ mod tests {
                 RespValue::SimpleString(std::str::from_utf8(&data[1..data.len() - 2]).unwrap())
             );
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -351,7 +356,9 @@ mod tests {
                 RespValue::SimpleError(std::str::from_utf8(&data[1..data.len() - 2]).unwrap())
             );
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -369,7 +376,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::Null);
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -394,7 +403,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::Integer(0));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -402,7 +413,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::Integer(-123));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -427,7 +440,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::Boolean(true));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -435,7 +450,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::Boolean(false));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -470,7 +487,9 @@ mod tests {
                 RespValue::BigNumber("3492890328409238509324850943850943825024385")
             );
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -481,7 +500,9 @@ mod tests {
                 RespValue::BigNumber("-3492890328409238509324850943850943825024385")
             );
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -513,7 +534,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::Double(0.0));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -521,7 +544,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::Double(-10.2e-10));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), b",-0.00000000102\r\n");
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], b",-0.00000000102\r\n");
         }
 
         {
@@ -529,7 +554,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::Double(f64::INFINITY));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -537,7 +564,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::Double(f64::NEG_INFINITY));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -549,7 +578,9 @@ mod tests {
                 _ => unreachable!(),
             }
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), b",NaN\r\n");
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], b",NaN\r\n");
         }
 
         {
@@ -573,7 +604,9 @@ mod tests {
                 ])
             );
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -582,7 +615,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::Array(vec![]));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -591,7 +626,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::NullArray);
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -609,7 +646,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::BulkString("hello"));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -618,7 +657,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::BulkString(""));
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
@@ -627,7 +668,9 @@ mod tests {
             let value = RespValue::deserialize(&data[..]).unwrap();
             assert_eq!(value.0, RespValue::NullBulkString);
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), data);
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
 
         {
