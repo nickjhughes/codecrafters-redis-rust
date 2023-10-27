@@ -26,6 +26,7 @@ impl State {
                 p
             };
             dbg!(&path);
+            println!("Path exists? {}", path.exists());
             read_rdb_file(path)?
         } else {
             Store::default()
