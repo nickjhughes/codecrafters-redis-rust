@@ -82,8 +82,10 @@ async fn handle_connection(mut stream: TcpStream) {
 
                 if let Ok(request) = Request::deserialize(&buf[0..bytes_read]) {
                     if let Ok(response) = request.generate_response() {
+                        let resp = response.serialize();
+                        eprintln!("Response: {:?}", resp);
                         stream
-                            .write_all(&response.serialize())
+                            .write_all(&resp)
                             .await
                             .expect("failed to write to stream");
                     } else {
