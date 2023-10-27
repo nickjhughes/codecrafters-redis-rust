@@ -65,8 +65,8 @@ enum Response<'data> {
 impl<'data> Response<'data> {
     fn serialize(&self) -> Vec<u8> {
         match self {
-            Response::Pong => RespValue::SimpleString("pong").serialize(),
-            Response::Echo(_) => todo!(),
+            Response::Pong => RespValue::SimpleString("PONG").serialize(),
+            Response::Echo(s) => RespValue::Array(vec![RespValue::BulkString(s)]).serialize(),
         }
     }
 }
