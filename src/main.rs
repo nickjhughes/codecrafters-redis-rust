@@ -1,42 +1,90 @@
-use anyhow::Context;
-use std::net::{Ipv4Addr, SocketAddrV4};
+use std::{
+    ascii::AsciiExt,
+    net::{Ipv4Addr, SocketAddrV4},
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 
+use resp::RespValue;
+
+mod resp;
+
 const ADDRESS: Ipv4Addr = Ipv4Addr::LOCALHOST;
 const PORT: u16 = 6379;
 
 #[derive(Debug)]
-enum Request {
+enum Request<'data> {
     Ping,
+    Echo(&'data str),
 }
 
-impl Request {
-    fn deserialize(buf: &str) -> anyhow::Result<Self> {
-        match buf {
-            "*1\r\n$4\r\nping\r\n" => Ok(Request::Ping),
-            _ => Err(anyhow::format_err!("unsupported request: {:?}", buf)),
+impl<'data> Request<'data> {
+    fn deserialize(data: &'data [u8]) -> anyhow::Result<Self> {
+        if data.is_empty() {
+            return Err(anyhow::format_err!("empty request"));
         }
+        let (request_value, _) = RespValue::deserialize(data)?;
+        match request_value {
+            RespValue::Array(elements) => {
+                if elements.is_empty() {
+                    return Err(anyhow::format_err!("empty array request"));
+                }
+                match elements[0] {
+                    RespValue::BulkString(s) => match s.to_lowercase().as_str() {
+                        "ping" => {
+                            return Ok(Request::Ping);
+                        }
+                        "echo" => {
+                            if elements.len() == 2 {
+                                return Ok(Request::Echo(s));
+                            }
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+                //     if elements.len() >= 2 {
+                //         match elements[0] {
+                //             RespValue::BulkString(s) => {
+                //                 if s.to_ascii_lowercase() == "echo" {
+                //                     match elements[1] {
+                //                         RespValue::BulkString(s) => {
+                //                             return Ok(Request::Echo(s));
+                //                         }
+                //                         _ => {}
+                //                     }
+                //                 }
+                //             }
+                //             _ => {}
+                //         }
+                //     }
+            }
+            _ => {}
+        }
+        Err(anyhow::format_err!("unhandled request"))
     }
 
     fn generate_response(&self) -> anyhow::Result<Response> {
         match self {
             Request::Ping => Ok(Response::Pong),
+            Request::Echo(message) => Ok(Response::Echo(message)),
         }
     }
 }
 
 #[derive(Debug)]
-enum Response {
+enum Response<'data> {
     Pong,
+    Echo(&'data str),
 }
 
-impl Response {
-    fn serialize(&self) -> String {
+impl<'data> Response<'data> {
+    fn serialize(&self) -> Vec<u8> {
         match self {
-            Response::Pong => "+PONG\r\n".into(),
+            Response::Pong => RespValue::SimpleString("pong").serialize(),
+            Response::Echo(_) => todo!(),
         }
     }
 }
@@ -50,20 +98,17 @@ async fn handle_connection(mut stream: TcpStream) {
                     continue;
                 }
 
-                let request_str = std::str::from_utf8(&buf[0..bytes_read])
-                    .context("request should be valid utf-8")
-                    .unwrap();
-                if let Ok(request) = Request::deserialize(request_str) {
+                if let Ok(request) = Request::deserialize(&buf[0..bytes_read]) {
                     if let Ok(response) = request.generate_response() {
                         let _ = stream
-                            .write_all(response.serialize().as_bytes())
+                            .write_all(&response.serialize())
                             .await
                             .expect("failed to write to stream");
                     } else {
-                        eprintln!("failed to generate a response to {:?}", request)
+                        eprintln!("failed to generate a response");
                     }
                 } else {
-                    eprintln!("failed to parse request {:?}", request_str)
+                    eprintln!("failed to parse request");
                 }
             }
             Err(e) => {
