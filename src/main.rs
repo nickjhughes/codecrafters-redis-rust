@@ -87,7 +87,8 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(SocketAddrV4::new(ADDRESS, PORT)).await?;
 
     loop {
-        let (stream, _) = listener.accept().await?;
+        let (stream, socket) = listener.accept().await?;
+        eprintln!("Accepted connection from {:?}", socket);
         handle_connection(stream).await?;
     }
 }
