@@ -52,11 +52,10 @@ async fn handle_connection(mut stream: TcpStream, socket: SocketAddr) {
 
     eprintln!("New connection from {:?}", socket);
 
-    let mut buf = vec![0; 1024];
+    let mut buf = [0; 1024];
     loop {
         match stream.try_read(&mut buf) {
             Ok(bytes_read) => {
-                buf.truncate(bytes_read);
                 if bytes_read == 0 {
                     continue;
                 }
