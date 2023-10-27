@@ -25,9 +25,12 @@ impl State {
                 p.push(config.0.get(&Parameter::DbFilename).unwrap());
                 p
             };
-            dbg!(&path);
-            println!("Path exists? {}", path.exists());
-            read_rdb_file(path)?
+            if path.exists() {
+                eprintln!("warning: database file {:?} doesn't exist", path);
+                read_rdb_file(path)?
+            } else {
+                Store::default()
+            }
         } else {
             Store::default()
         };
