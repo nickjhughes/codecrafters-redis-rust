@@ -1,7 +1,8 @@
-use std::time::Instant;
+use std::{path::PathBuf, time::Instant};
 
 use crate::{
-    config::Config,
+    config::{Config, Parameter},
+    rdb::read_rdb_file,
     request::{Request, SetRequest},
     response::{ConfigGetResponse, GetResponse, Response, SetResponse},
     store::{Store, StoreValue},
@@ -13,11 +14,23 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(config: Config) -> Self {
-        State {
-            store: Store::default(),
-            config,
-        }
+    pub fn new(config: Config) -> anyhow::Result<Self> {
+        let store = if config.0.contains_key(&Parameter::Dir)
+            && config.0.contains_key(&Parameter::DbFilename)
+        {
+            let path = {
+                let mut p = PathBuf::new();
+                p.push(config.0.get(&Parameter::Dir).unwrap());
+                p.push(config.0.get(&Parameter::DbFilename).unwrap());
+                p
+            };
+            dbg!(&path);
+            read_rdb_file(path)?
+        } else {
+            Store::default()
+        };
+
+        Ok(State { store, config })
     }
 
     pub fn handle_request<'request, 'state>(

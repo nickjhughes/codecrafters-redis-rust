@@ -89,7 +89,7 @@ fn parse_args(args: Args) -> anyhow::Result<Config> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let state = Arc::new(Mutex::new(State::new(parse_args(std::env::args())?)));
+    let state = Arc::new(Mutex::new(State::new(parse_args(std::env::args())?)?));
 
     let listener = TcpListener::bind(SocketAddrV4::new(ADDRESS, PORT)).await?;
     loop {
