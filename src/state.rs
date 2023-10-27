@@ -26,9 +26,9 @@ impl State {
                 p
             };
             if path.exists() {
-                eprintln!("warning: database file {:?} doesn't exist", path);
                 read_rdb_file(path)?
             } else {
+                eprintln!("warning: database file {:?} doesn't exist", path);
                 Store::default()
             }
         } else {
