@@ -1,6 +1,7 @@
 const TERMINATOR: &[u8] = b"\r\n";
 
 #[derive(Debug, PartialEq, Clone)]
+#[allow(dead_code)]
 pub enum RespValue<'data> {
     SimpleString(&'data str),
     SimpleError(&'data str),
@@ -16,12 +17,6 @@ pub enum RespValue<'data> {
     Map,
     Set,
     Push,
-}
-
-#[derive(Debug, PartialEq)]
-enum RespValueCategory {
-    Simple,
-    Aggregate,
 }
 
 impl<'data> RespValue<'data> {
@@ -41,25 +36,6 @@ impl<'data> RespValue<'data> {
             RespValue::Map => b'%',
             RespValue::Set => b'~',
             RespValue::Push => b'>',
-        }
-    }
-
-    fn category(&self) -> RespValueCategory {
-        match self {
-            RespValue::SimpleString(_) => RespValueCategory::Simple,
-            RespValue::SimpleError(_) => RespValueCategory::Simple,
-            RespValue::Integer(_) => RespValueCategory::Simple,
-            RespValue::BulkString(_) => RespValueCategory::Aggregate,
-            RespValue::Array(_) => RespValueCategory::Aggregate,
-            RespValue::Null => RespValueCategory::Simple,
-            RespValue::Boolean(_) => RespValueCategory::Simple,
-            RespValue::Double(_) => RespValueCategory::Simple,
-            RespValue::BigNumber(_) => RespValueCategory::Simple,
-            RespValue::BulkError => RespValueCategory::Aggregate,
-            RespValue::VerbatimString => RespValueCategory::Aggregate,
-            RespValue::Map => RespValueCategory::Aggregate,
-            RespValue::Set => RespValueCategory::Aggregate,
-            RespValue::Push => RespValueCategory::Aggregate,
         }
     }
 

@@ -1,7 +1,4 @@
-use std::{
-    ascii::AsciiExt,
-    net::{Ipv4Addr, SocketAddrV4},
-};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -45,21 +42,6 @@ impl<'data> Request<'data> {
                     },
                     _ => {}
                 }
-                //     if elements.len() >= 2 {
-                //         match elements[0] {
-                //             RespValue::BulkString(s) => {
-                //                 if s.to_ascii_lowercase() == "echo" {
-                //                     match elements[1] {
-                //                         RespValue::BulkString(s) => {
-                //                             return Ok(Request::Echo(s));
-                //                         }
-                //                         _ => {}
-                //                     }
-                //                 }
-                //             }
-                //             _ => {}
-                //         }
-                //     }
             }
             _ => {}
         }
@@ -100,7 +82,7 @@ async fn handle_connection(mut stream: TcpStream) {
 
                 if let Ok(request) = Request::deserialize(&buf[0..bytes_read]) {
                     if let Ok(response) = request.generate_response() {
-                        let _ = stream
+                        stream
                             .write_all(&response.serialize())
                             .await
                             .expect("failed to write to stream");
