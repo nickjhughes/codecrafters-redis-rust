@@ -9,6 +9,7 @@ pub enum RespValue<'data> {
     BulkString(&'data str),
     NullBulkString,
     Array(Vec<RespValue<'data>>),
+    NullArray,
     Null,
     Boolean(bool),
     Double(f64),
@@ -29,6 +30,7 @@ impl<'data> RespValue<'data> {
             RespValue::BulkString(_) => b'$',
             RespValue::NullBulkString => b'$',
             RespValue::Array(_) => b'*',
+            RespValue::NullArray => b'*',
             RespValue::Null => b'_',
             RespValue::Boolean(_) => b'#',
             RespValue::Double(_) => b',',
@@ -49,6 +51,7 @@ impl<'data> RespValue<'data> {
             RespValue::BulkString(_) => true,
             RespValue::NullBulkString => true,
             RespValue::Array(_) => false,
+            RespValue::NullArray => true,
             RespValue::Null => true,
             RespValue::Boolean(_) => true,
             RespValue::Double(_) => true,
@@ -75,7 +78,7 @@ impl<'data> RespValue<'data> {
                 output.extend_from_slice(TERMINATOR);
                 output.extend_from_slice(s.as_bytes());
             }
-            RespValue::NullBulkString => {
+            RespValue::NullBulkString | RespValue::NullArray => {
                 output.extend(b"-1");
             }
             RespValue::Array(elements) => {
@@ -166,7 +169,7 @@ impl<'data> RespValue<'data> {
                             }
                         } else if digits_str == "-1" {
                             // Null bulk string special case
-                            Ok((RespValue::Null, &data[terminator_index + 2..]))
+                            Ok((RespValue::NullBulkString, &data[terminator_index + 2..]))
                         } else {
                             Err(anyhow::format_err!("invalid bulk string"))
                         }
@@ -192,7 +195,7 @@ impl<'data> RespValue<'data> {
                             Ok((RespValue::Array(elements), rest))
                         } else if digits_str == "-1" {
                             // Null array special case
-                            Ok((RespValue::Null, &data[terminator_index + 2..]))
+                            Ok((RespValue::NullArray, &data[terminator_index + 2..]))
                         } else {
                             Err(anyhow::format_err!("invalid array"))
                         }
@@ -586,9 +589,9 @@ mod tests {
             // Null array
             let data = b"*-1\r\n";
             let value = RespValue::deserialize(&data[..]).unwrap();
-            assert_eq!(value.0, RespValue::Null);
+            assert_eq!(value.0, RespValue::NullArray);
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), b"_\r\n");
+            assert_eq!(value.0.serialize(), data);
         }
 
         {
@@ -622,9 +625,9 @@ mod tests {
             // Null bulk string
             let data = b"$-1\r\n";
             let value = RespValue::deserialize(&data[..]).unwrap();
-            assert_eq!(value.0, RespValue::Null);
+            assert_eq!(value.0, RespValue::NullBulkString);
             assert!(value.1.is_empty());
-            assert_eq!(value.0.serialize(), b"_\r\n");
+            assert_eq!(value.0.serialize(), data);
         }
 
         {
