@@ -97,7 +97,7 @@ impl<'data> Request<'data> {
                         _ => Err(anyhow::format_err!("malformed CONFIG command")),
                     },
                     command => Err(anyhow::format_err!(
-                        "unhandled command {:?}",
+                        "unknown command {:?}",
                         command.to_uppercase()
                     )),
                 },

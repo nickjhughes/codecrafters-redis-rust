@@ -11,6 +11,7 @@ use tokio::{
 
 use config::{Config, Parameter};
 use request::Request;
+use resp_value::RespValue;
 use state::State;
 
 mod config;
@@ -36,9 +37,9 @@ async fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
 
                 // TODO: Deal with incomplete frames of data
 
+                output_buf.clear();
                 match Request::deserialize(&input_buf[0..bytes_read]) {
                     Ok(request) => {
-                        output_buf.clear();
                         state
                             .lock()
                             .expect("failed to get lock")
@@ -50,7 +51,14 @@ async fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             .await
                             .expect("failed to write to stream");
                     }
-                    Err(e) => eprintln!("failed to deserialize request: {:?}", e),
+                    Err(e) => {
+                        RespValue::SimpleError(&format!("ERR {:?}", e)).serialize(&mut output_buf);
+                        stream
+                            .write_all(&output_buf)
+                            .await
+                            .expect("failed to write to stream");
+                        eprintln!("failed to deserialize request: {:?}", e)
+                    }
                 }
             }
             Err(e) => {
