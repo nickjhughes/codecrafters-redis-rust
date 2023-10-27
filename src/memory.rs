@@ -1,11 +1,13 @@
 use std::{
     collections::HashMap,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 use crate::{
+    config::Config,
     request::{Request, SetRequest},
-    response::{GetResponse, Response, SetResponse},
+    response::{ConfigGetResponse, GetResponse, Response, SetResponse},
 };
 
 #[derive(Default)]
@@ -24,6 +26,7 @@ impl Memory {
     pub fn handle_request<'request, 'memory>(
         &'memory mut self,
         request: &'request Request,
+        config: Arc<Config>,
     ) -> anyhow::Result<Response<'request, 'memory>> {
         match request {
             Request::Ping => Ok(Response::Pong),
@@ -52,6 +55,13 @@ impl Memory {
                     }
                 }
                 None => Ok(Response::Get(GetResponse::NotFound)),
+            },
+            Request::ConfigGet(parameter) => match config.0.get(parameter) {
+                Some(value) => Ok(Response::ConfigGet(Some(ConfigGetResponse {
+                    parameter: parameter.clone(),
+                    value: value.to_string(),
+                }))),
+                None => Ok(Response::ConfigGet(None)),
             },
         }
     }
