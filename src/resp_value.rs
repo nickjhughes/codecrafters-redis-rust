@@ -27,7 +27,7 @@ impl<'data> RespValue<'data> {
             RespValue::SimpleError(_) => b'-',
             RespValue::Integer(_) => b':',
             RespValue::BulkString(_) => b'$',
-            RespValue::NullBulkString => panic!(),
+            RespValue::NullBulkString => b'$',
             RespValue::Array(_) => b'*',
             RespValue::Null => b'_',
             RespValue::Boolean(_) => b'#',
