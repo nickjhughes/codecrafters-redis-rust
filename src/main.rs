@@ -53,7 +53,7 @@ async fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
             Ok(bytes_read) => {
                 buf.truncate(bytes_read);
                 if bytes_read == 0 {
-                    break;
+                    continue;
                 }
 
                 let request_str = std::str::from_utf8(&buf[0..bytes_read])
@@ -78,9 +78,8 @@ async fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
         }
     }
 
-    stream.shutdown().await?;
-
-    Ok(())
+    // stream.shutdown().await?;
+    // Ok(())
 }
 
 #[tokio::main]
