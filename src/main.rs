@@ -42,19 +42,25 @@ impl Response {
 
 fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
     let mut buf = [0u8; 1024];
-    let bytes_read = stream.read(&mut buf)?;
 
-    let request_str = std::str::from_utf8(&buf[0..bytes_read])
-        .context("request should be valid utf-8")
-        .unwrap();
-    if let Ok(request) = Request::deserialize(request_str) {
-        if let Ok(response) = request.generate_response() {
-            stream.write_all(response.serialize().as_bytes())?;
-        } else {
-            eprintln!("failed to generate a response to {:?}", request)
+    loop {
+        let bytes_read = stream.read(&mut buf)?;
+        if bytes_read == 0 {
+            break;
         }
-    } else {
-        eprintln!("failed to parse request {:?}", request_str)
+
+        let request_str = std::str::from_utf8(&buf[0..bytes_read])
+            .context("request should be valid utf-8")
+            .unwrap();
+        if let Ok(request) = Request::deserialize(request_str) {
+            if let Ok(response) = request.generate_response() {
+                stream.write_all(response.serialize().as_bytes())?;
+            } else {
+                eprintln!("failed to generate a response to {:?}", request)
+            }
+        } else {
+            eprintln!("failed to parse request {:?}", request_str)
+        }
     }
 
     Ok(())
