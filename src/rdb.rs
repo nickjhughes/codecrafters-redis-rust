@@ -178,7 +178,7 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
     let mut store = Store::default();
 
     let mut rest = &data[9..];
-    while !rest.is_empty() {
+    while rest.len() > 1 {
         match OpCode::try_from(rest[0]) {
             Ok(OpCode::EndOfFile) => {
                 let _checksum_bytes = &rest[1..9];
@@ -243,7 +243,16 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                         },
                     );
                 }
-                _ => todo!(),
+                ValueType::List => todo!(),
+                ValueType::Set => todo!(),
+                ValueType::SortedSet => todo!(),
+                ValueType::Hash => todo!(),
+                ValueType::Zipmap => todo!(),
+                ValueType::Ziplist => todo!(),
+                ValueType::Intset => todo!(),
+                ValueType::SortedSetInZiplist => todo!(),
+                ValueType::HashmapInZiplist => todo!(),
+                ValueType::ListInQuicklist => todo!(),
             },
         }
     }
@@ -278,5 +287,16 @@ mod tests {
         assert!(store.data.contains_key("mykey"));
         let value = store.data.get("mykey").unwrap();
         assert_eq!(value.data, "myval")
+    }
+
+    #[test]
+    fn challenge_dump() {
+        let data = &[
+            82, 69, 68, 73, 83, 48, 48, 48, 51, 250, 9, 114, 101, 100, 105, 115, 45, 118, 101, 114,
+            5, 55, 46, 50, 46, 48, 250, 10, 114, 101, 100, 105, 115, 45, 98, 105, 116, 115, 192,
+            64, 254, 0, 251, 5, 1, 0, 6, 111, 114, 97, 110, 103, 101, 5, 97, 112, 112, 108, 101,
+            255, 216, 107, 239, 211, 200, 206, 207, 54, 10,
+        ];
+        let _result = decode_rdb(data);
     }
 }
