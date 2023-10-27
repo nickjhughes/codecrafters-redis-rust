@@ -1,18 +1,18 @@
 use crate::{config::Parameter, resp_value::RespValue};
 
 #[derive(Debug)]
-pub enum Response<'request, 'memory> {
+pub enum Response<'request, 'store> {
     CommandDocs,
     Pong,
     Echo(&'request str),
     Set(SetResponse),
-    Get(GetResponse<'memory>),
+    Get(GetResponse<'store>),
     ConfigGet(Option<ConfigGetResponse>),
 }
 
 #[derive(Debug)]
-pub enum GetResponse<'memory> {
-    Found(&'memory str),
+pub enum GetResponse<'store> {
+    Found(&'store str),
     NotFound,
 }
 
@@ -27,7 +27,7 @@ pub struct ConfigGetResponse {
     pub value: String,
 }
 
-impl<'request, 'memory> Response<'request, 'memory> {
+impl<'request, 'store> Response<'request, 'store> {
     pub fn serialize(&self) -> Vec<u8> {
         match self {
             Response::Pong => RespValue::SimpleString("PONG").serialize(),

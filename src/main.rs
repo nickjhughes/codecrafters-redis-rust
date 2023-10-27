@@ -9,19 +9,20 @@ use tokio::{
 };
 
 use config::{Config, Parameter};
-use memory::Memory;
 use request::Request;
+use store::Store;
 
 mod config;
-mod memory;
+mod rdb;
 mod request;
 mod resp_value;
 mod response;
+mod store;
 
 const ADDRESS: Ipv4Addr = Ipv4Addr::LOCALHOST;
 const PORT: u16 = 6379;
 
-async fn handle_connection(mut stream: TcpStream, memory: Arc<Mutex<Memory>>, config: Arc<Config>) {
+async fn handle_connection(mut stream: TcpStream, memory: Arc<Mutex<Store>>, config: Arc<Config>) {
     let mut buf = [0; 512];
     loop {
         match stream.read(&mut buf).await {
@@ -75,7 +76,7 @@ fn parse_args(args: Args) -> anyhow::Result<Config> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let config = Arc::new(parse_args(std::env::args())?);
-    let memory = Arc::new(Mutex::new(Memory::default()));
+    let memory = Arc::new(Mutex::new(Store::default()));
 
     let listener = TcpListener::bind(SocketAddrV4::new(ADDRESS, PORT)).await?;
     loop {

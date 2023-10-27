@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct Memory {
+pub struct Store {
     data: HashMap<String, Value>,
 }
 
@@ -22,12 +22,12 @@ pub struct Value {
     pub expiry: Option<Duration>,
 }
 
-impl Memory {
-    pub fn handle_request<'request, 'memory>(
-        &'memory mut self,
+impl Store {
+    pub fn handle_request<'request, 'store>(
+        &'store mut self,
         request: &'request Request,
         config: Arc<Config>,
-    ) -> anyhow::Result<Response<'request, 'memory>> {
+    ) -> anyhow::Result<Response<'request, 'store>> {
         match request {
             Request::Ping => Ok(Response::Pong),
             Request::Echo(message) => Ok(Response::Echo(message)),
