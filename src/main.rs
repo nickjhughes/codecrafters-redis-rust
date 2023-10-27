@@ -35,7 +35,12 @@ impl<'data> Request<'data> {
                         }
                         "echo" => {
                             if elements.len() == 2 {
-                                return Ok(Request::Echo(s));
+                                match elements[1] {
+                                    RespValue::BulkString(s) => {
+                                        return Ok(Request::Echo(s));
+                                    }
+                                    _ => {}
+                                }
                             }
                         }
                         _ => {}
