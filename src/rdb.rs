@@ -171,7 +171,7 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
         anyhow::bail!("invalid magic string");
     }
     let _version = std::str::from_utf8(&data[5..9])?.parse::<u16>()?;
-    // eprintln!("File version: {}", version);
+    eprintln!("File version: {}", version);
 
     let mut store = Store::default();
 
@@ -184,10 +184,11 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                 rest = &rest[9..];
             }
             Ok(OpCode::SelectDatabase) => {
-                let _database = rest[1];
+                // TODO: I'm not sure this is correct
+                let database = rest[1];
                 rest = &rest[2..];
 
-                // eprintln!("Select database: {}", database);
+                eprintln!("Select database: {}", database);
             }
             Ok(OpCode::ExpireTimeSecs) => {
                 todo!()
@@ -204,23 +205,23 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
 
                 // TODO: I don't think this is correct for larger numbers
                 let database_hash_table_size = rest[1];
-                let _expiry_hash_table_size = rest[2];
+                let expiry_hash_table_size = rest[2];
                 rest = &rest[3..];
 
-                // eprintln!(
-                //     "Resize database: db hash table size {}, expiry hash table size {}",
-                //     database_hash_table_size, expiry_hash_table_size
-                // );
+                eprintln!(
+                    "Resize database: db hash table size {}, expiry hash table size {}",
+                    database_hash_table_size, expiry_hash_table_size
+                );
                 store.data.reserve(database_hash_table_size as usize);
             }
             Ok(OpCode::Auxiliary) => {
                 rest = &rest[1..];
-                let (_key, bytes_read) = parse_string(rest)?;
+                let (key, bytes_read) = parse_string(rest)?;
                 rest = &rest[bytes_read..];
-                let (_value, bytes_read) = parse_string(rest)?;
+                let (value, bytes_read) = parse_string(rest)?;
                 rest = &rest[bytes_read..];
 
-                // eprintln!("Aux key/value pair: {}, {}", key, value);
+                eprintln!("Aux key/value pair: {}, {}", key, value);
             }
             Err(_) => match ValueType::try_from(rest[0])? {
                 ValueType::String => {
@@ -230,7 +231,7 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                     let (value, bytes_read) = parse_string(rest)?;
                     rest = &rest[bytes_read..];
 
-                    // eprintln!("Database key/value pair: {}, {}", key, value);
+                    eprintln!("Database key/value pair: {}, {}", key, value);
                     store.data.insert(
                         key,
                         crate::store::StoreValue {
