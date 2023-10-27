@@ -1,7 +1,11 @@
 use anyhow::Context;
 use std::{
-    io::{Read, Write},
-    net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream},
+    io,
+    net::{Ipv4Addr, SocketAddrV4},
+};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpListener, TcpStream},
 };
 
 const ADDRESS: Ipv4Addr = Ipv4Addr::LOCALHOST;
@@ -40,36 +44,51 @@ impl Response {
     }
 }
 
-fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
-    let mut buf = [0u8; 1024];
+async fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {
+    stream.readable().await?;
 
+    let mut buf = vec![0; 1024];
     loop {
-        let bytes_read = stream.read(&mut buf)?;
-        if bytes_read == 0 {
-            break;
-        }
+        match stream.try_read(&mut buf) {
+            Ok(bytes_read) => {
+                buf.truncate(bytes_read);
+                if bytes_read == 0 {
+                    break;
+                }
 
-        let request_str = std::str::from_utf8(&buf[0..bytes_read])
-            .context("request should be valid utf-8")
-            .unwrap();
-        if let Ok(request) = Request::deserialize(request_str) {
-            if let Ok(response) = request.generate_response() {
-                stream.write_all(response.serialize().as_bytes())?;
-            } else {
-                eprintln!("failed to generate a response to {:?}", request)
+                let request_str = std::str::from_utf8(&buf[0..bytes_read])
+                    .context("request should be valid utf-8")
+                    .unwrap();
+                if let Ok(request) = Request::deserialize(request_str) {
+                    if let Ok(response) = request.generate_response() {
+                        stream.write(response.serialize().as_bytes()).await?;
+                    } else {
+                        eprintln!("failed to generate a response to {:?}", request)
+                    }
+                } else {
+                    eprintln!("failed to parse request {:?}", request_str)
+                }
             }
-        } else {
-            eprintln!("failed to parse request {:?}", request_str)
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                continue;
+            }
+            Err(e) => {
+                return Err(e.into());
+            }
         }
     }
+
+    stream.shutdown().await?;
 
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-    let listener = TcpListener::bind(SocketAddrV4::new(ADDRESS, PORT))?;
-    for stream in listener.incoming() {
-        handle_connection(stream?)?;
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let listener = TcpListener::bind(SocketAddrV4::new(ADDRESS, PORT)).await?;
+
+    loop {
+        let (stream, _) = listener.accept().await?;
+        handle_connection(stream).await?;
     }
-    Ok(())
 }
