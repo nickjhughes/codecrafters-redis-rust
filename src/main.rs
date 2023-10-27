@@ -63,6 +63,7 @@ async fn handle_connection(mut stream: TcpStream) {
                     .context("request should be valid utf-8")
                     .unwrap();
                 if let Ok(request) = Request::deserialize(request_str) {
+                    dbg!(&request);
                     if let Ok(response) = request.generate_response() {
                         stream
                             .write(response.serialize().as_bytes())
@@ -79,7 +80,7 @@ async fn handle_connection(mut stream: TcpStream) {
                 continue;
             }
             Err(e) => {
-                eprintln!("strea read error: {:?}", e);
+                eprintln!("stream read error: {:?}", e);
                 break;
             }
         }
@@ -92,6 +93,7 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         let (stream, socket) = listener.accept().await?;
+        eprintln!("New connection from {:?}", socket);
         tokio::spawn(async move {
             handle_connection(stream).await;
         });
