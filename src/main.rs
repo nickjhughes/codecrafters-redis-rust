@@ -80,6 +80,7 @@ async fn handle_connection(mut stream: TcpStream, socket: SocketAddr) {
                 }
             }
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                eprintln!("Would block...");
                 continue;
             }
             Err(e) => {
