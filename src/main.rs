@@ -83,7 +83,7 @@ async fn handle_connection(mut stream: TcpStream) {
                 if let Ok(request) = Request::deserialize(&buf[0..bytes_read]) {
                     if let Ok(response) = request.generate_response() {
                         let resp = response.serialize();
-                        eprintln!("Response: {:?}", resp);
+                        eprintln!("Response: {:?}", std::str::from_utf8(&resp).unwrap());
                         stream
                             .write_all(&resp)
                             .await
