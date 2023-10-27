@@ -4,6 +4,7 @@ use crate::{
     config::{Config, Parameter},
     rdb::read_rdb_file,
     request::{Request, SetRequest},
+    resp_value::RespValue,
     response::{ConfigGetResponse, GetResponse, Response, SetResponse},
     store::{Store, StoreValue},
 };
@@ -72,6 +73,15 @@ impl State {
                 }))),
                 None => Ok(Response::ConfigGet(None)),
             },
+            Request::Keys => {
+                let keys = self
+                    .store
+                    .data
+                    .keys()
+                    .map(|k| RespValue::BulkString(k))
+                    .collect();
+                Ok(Response::Keys(keys))
+            }
         }
     }
 }

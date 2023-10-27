@@ -10,6 +10,7 @@ pub enum Request<'data> {
     Set(SetRequest<'data>),
     Get(&'data str),
     ConfigGet(Parameter),
+    Keys,
 }
 
 #[derive(Debug)]
@@ -95,6 +96,10 @@ impl<'data> Request<'data> {
                             )),
                         },
                         _ => Err(anyhow::format_err!("malformed CONFIG command")),
+                    },
+                    "keys" => match elements.get(1) {
+                        Some(RespValue::BulkString(_)) => Ok(Request::Keys),
+                        _ => Err(anyhow::format_err!("malformed KEYS command",)),
                     },
                     command => Err(anyhow::format_err!(
                         "unknown command {:?}",

@@ -10,6 +10,7 @@ pub enum Response<'request, 'state> {
     Set(SetResponse),
     Get(GetResponse<'state>),
     ConfigGet(Option<ConfigGetResponse<'state>>),
+    Keys(Vec<RespValue<'state>>),
 }
 
 #[derive(Debug)]
@@ -49,6 +50,7 @@ impl<'request, 'state> Response<'request, 'state> {
                 ]),
                 None => RespValue::NullBulkString,
             },
+            Response::Keys(keys) => RespValue::Array(keys.to_vec()),
         };
         response_value.serialize(buf);
     }
