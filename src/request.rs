@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::resp_value::RespValue;
 
 #[derive(Debug)]
@@ -5,8 +7,15 @@ pub enum Request<'data> {
     CommandDocs,
     Ping,
     Echo(&'data str),
-    Set { key: &'data str, value: &'data str },
+    Set(SetRequest<'data>),
     Get(&'data str),
+}
+
+#[derive(Debug)]
+pub struct SetRequest<'data> {
+    pub key: &'data str,
+    pub value: &'data str,
+    pub expiry: Option<Duration>,
 }
 
 impl<'data> Request<'data> {
@@ -39,7 +48,27 @@ impl<'data> Request<'data> {
                             Some(RespValue::BulkString(s)) => *s,
                             _ => return Err(anyhow::format_err!("malformed SET command")),
                         };
-                        Ok(Request::Set { key, value })
+                        let expiry = match elements.get(3) {
+                            Some(RespValue::BulkString(s)) => {
+                                if s.to_lowercase() == "px" {
+                                    match elements.get(4) {
+                                        Some(RespValue::BulkString(millis_string)) => {
+                                            if let Ok(millis) = millis_string.parse::<u64>() {
+                                                Some(Duration::from_millis(millis))
+                                            } else {
+                                                None
+                                            }
+                                        }
+                                        _ => None,
+                                    }
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        };
+
+                        Ok(Request::Set(SetRequest { key, value, expiry }))
                     }
                     "get" => {
                         let key = match elements.get(1) {
