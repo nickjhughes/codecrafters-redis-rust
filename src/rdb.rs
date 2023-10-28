@@ -235,10 +235,10 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                         let (value, bytes_read) = parse_string(rest)?;
                         rest = &rest[bytes_read..];
 
-                        // eprintln!(
-                        //     "Database key/value pair with expiry: {}, {}, {:?}",
-                        //     key, value, expiry
-                        // );
+                        eprintln!(
+                            "Database key/value pair with expiry: {}, {}, {:?}",
+                            key, value, expiry
+                        );
                         store.data.insert(
                             key,
                             crate::store::StoreValue {

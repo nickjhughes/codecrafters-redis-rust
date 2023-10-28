@@ -72,6 +72,8 @@ impl State {
                         Some(StoreExpiry::UnixTimestampMillis(t)) => {
                             let unix_time =
                                 SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
+                            eprintln!("Current unix time: {}", unix_time);
+                            eprintln!("Expiry time: {}", t);
                             if t < unix_time {
                                 // Key has expired
                                 Ok(Response::Get(GetResponse::NotFound))
