@@ -193,7 +193,7 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
             }
             Ok(OpCode::ExpireTimeSecs) => {
                 let expiry = StoreExpiry::UnixTimestampMillis(
-                    u32::from_be_bytes([rest[1], rest[2], rest[3], rest[4]]) as u64 * 1000,
+                    u32::from_le_bytes([rest[1], rest[2], rest[3], rest[4]]) as u64 * 1000,
                 );
 
                 rest = &rest[5..];
@@ -222,9 +222,9 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                 }
             }
             Ok(OpCode::ExpireTimeMillis) => {
-                let expiry = StoreExpiry::UnixTimestampMillis(u64::from_be_bytes([
+                let expiry = StoreExpiry::UnixTimestampMillis(u64::from_le_bytes([
                     rest[1], rest[2], rest[3], rest[4], rest[5], rest[6], rest[7], rest[8],
-                ]) as u64);
+                ]));
 
                 rest = &rest[9..];
                 match ValueType::try_from(rest[0])? {
