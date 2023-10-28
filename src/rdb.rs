@@ -167,6 +167,8 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
         anyhow::bail!("file too short");
     }
 
+    dbg!(data);
+
     if &data[0..5] != b"REDIS" {
         anyhow::bail!("invalid magic string");
     }
