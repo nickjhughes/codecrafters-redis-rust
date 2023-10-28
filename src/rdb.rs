@@ -226,7 +226,7 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                     rest[1], rest[2], rest[3], rest[4],
                 ]) as u64);
 
-                rest = &rest[5..];
+                rest = &rest[9..];
                 match ValueType::try_from(rest[0])? {
                     ValueType::String => {
                         rest = &rest[1..];
