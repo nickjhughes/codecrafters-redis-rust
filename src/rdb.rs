@@ -206,7 +206,7 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                         rest = &rest[bytes_read..];
 
                         // eprintln!(
-                        //     "Database key/value pair with expiey: {}, {}, {:?}",
+                        //     "Database key/value pair with expiry: {}, {}, {:?}",
                         //     key, value, expiry
                         // );
                         store.data.insert(
@@ -222,8 +222,8 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                 }
             }
             Ok(OpCode::ExpireTimeMillis) => {
-                let expiry = StoreExpiry::UnixTimestampMillis(u32::from_be_bytes([
-                    rest[1], rest[2], rest[3], rest[4],
+                let expiry = StoreExpiry::UnixTimestampMillis(u64::from_be_bytes([
+                    rest[1], rest[2], rest[3], rest[4], rest[5], rest[6], rest[7], rest[8],
                 ]) as u64);
 
                 rest = &rest[9..];
@@ -236,7 +236,7 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                         rest = &rest[bytes_read..];
 
                         // eprintln!(
-                        //     "Database key/value pair with expiey: {}, {}, {:?}",
+                        //     "Database key/value pair with expiry: {}, {}, {:?}",
                         //     key, value, expiry
                         // );
                         store.data.insert(
