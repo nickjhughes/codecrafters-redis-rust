@@ -12,5 +12,11 @@ pub struct Store {
 pub struct StoreValue {
     pub data: String,
     pub updated: Instant,
-    pub expiry: Option<Duration>,
+    pub expiry: Option<StoreExpiry>,
+}
+
+#[derive(Debug)]
+pub enum StoreExpiry {
+    Duration(Duration),
+    UnixTimestampMillis(u64),
 }

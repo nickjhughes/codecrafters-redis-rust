@@ -1,4 +1,4 @@
-use crate::store::Store;
+use crate::store::{Store, StoreExpiry};
 use std::path::PathBuf;
 
 enum OpCode {
@@ -167,8 +167,6 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
         anyhow::bail!("file too short");
     }
 
-    dbg!(data);
-
     if &data[0..5] != b"REDIS" {
         anyhow::bail!("invalid magic string");
     }
@@ -194,10 +192,64 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                 // eprintln!("Select database: {}", database);
             }
             Ok(OpCode::ExpireTimeSecs) => {
-                todo!()
+                let expiry = StoreExpiry::UnixTimestampMillis(
+                    u32::from_be_bytes([rest[1], rest[2], rest[3], rest[4]]) as u64 * 1000,
+                );
+
+                rest = &rest[5..];
+                match ValueType::try_from(rest[0])? {
+                    ValueType::String => {
+                        rest = &rest[1..];
+                        let (key, bytes_read) = parse_string(rest)?;
+                        rest = &rest[bytes_read..];
+                        let (value, bytes_read) = parse_string(rest)?;
+                        rest = &rest[bytes_read..];
+
+                        // eprintln!(
+                        //     "Database key/value pair with expiey: {}, {}, {:?}",
+                        //     key, value, expiry
+                        // );
+                        store.data.insert(
+                            key,
+                            crate::store::StoreValue {
+                                data: value,
+                                updated: std::time::Instant::now(),
+                                expiry: Some(expiry),
+                            },
+                        );
+                    }
+                    _ => todo!(),
+                }
             }
             Ok(OpCode::ExpireTimeMillis) => {
-                todo!()
+                let expiry = StoreExpiry::UnixTimestampMillis(u32::from_be_bytes([
+                    rest[1], rest[2], rest[3], rest[4],
+                ]) as u64);
+
+                rest = &rest[5..];
+                match ValueType::try_from(rest[0])? {
+                    ValueType::String => {
+                        rest = &rest[1..];
+                        let (key, bytes_read) = parse_string(rest)?;
+                        rest = &rest[bytes_read..];
+                        let (value, bytes_read) = parse_string(rest)?;
+                        rest = &rest[bytes_read..];
+
+                        // eprintln!(
+                        //     "Database key/value pair with expiey: {}, {}, {:?}",
+                        //     key, value, expiry
+                        // );
+                        store.data.insert(
+                            key,
+                            crate::store::StoreValue {
+                                data: value,
+                                updated: std::time::Instant::now(),
+                                expiry: Some(expiry),
+                            },
+                        );
+                    }
+                    _ => todo!(),
+                }
             }
             Ok(OpCode::ResizeDatabase) => {
                 // rest = &rest[1..];
@@ -244,16 +296,7 @@ fn decode_rdb(data: &[u8]) -> anyhow::Result<Store> {
                         },
                     );
                 }
-                ValueType::List => todo!(),
-                ValueType::Set => todo!(),
-                ValueType::SortedSet => todo!(),
-                ValueType::Hash => todo!(),
-                ValueType::Zipmap => todo!(),
-                ValueType::Ziplist => todo!(),
-                ValueType::Intset => todo!(),
-                ValueType::SortedSetInZiplist => todo!(),
-                ValueType::HashmapInZiplist => todo!(),
-                ValueType::ListInQuicklist => todo!(),
+                _ => todo!(),
             },
         }
     }
@@ -297,6 +340,23 @@ mod tests {
             5, 55, 46, 50, 46, 48, 250, 10, 114, 101, 100, 105, 115, 45, 98, 105, 116, 115, 192,
             64, 254, 0, 251, 5, 1, 0, 6, 111, 114, 97, 110, 103, 101, 5, 97, 112, 112, 108, 101,
             255, 216, 107, 239, 211, 200, 206, 207, 54, 10,
+        ];
+        let _result = decode_rdb(data);
+    }
+
+    #[test]
+    fn challenge_dump_with_expiry() {
+        let data = &[
+            82, 69, 68, 73, 83, 48, 48, 48, 51, 250, 9, 114, 101, 100, 105, 115, 45, 118, 101, 114,
+            5, 55, 46, 50, 46, 48, 250, 10, 114, 101, 100, 105, 115, 45, 98, 105, 116, 115, 192,
+            64, 254, 0, 251, 5, 1, 252, 0, 156, 239, 18, 126, 1, 0, 0, 0, 9, 98, 108, 117, 101, 98,
+            101, 114, 114, 121, 5, 109, 97, 110, 103, 111, 252, 0, 12, 40, 138, 199, 1, 0, 0, 0, 4,
+            112, 101, 97, 114, 9, 112, 105, 110, 101, 97, 112, 112, 108, 101, 252, 0, 12, 40, 138,
+            199, 1, 0, 0, 0, 9, 114, 97, 115, 112, 98, 101, 114, 114, 121, 9, 98, 108, 117, 101,
+            98, 101, 114, 114, 121, 252, 0, 12, 40, 138, 199, 1, 0, 0, 0, 5, 109, 97, 110, 103,
+            111, 4, 112, 101, 97, 114, 252, 0, 12, 40, 138, 199, 1, 0, 0, 0, 6, 98, 97, 110, 97,
+            110, 97, 10, 115, 116, 114, 97, 119, 98, 101, 114, 114, 121, 255, 146, 155, 95, 143,
+            105, 232, 19, 170, 10,
         ];
         let _result = decode_rdb(data);
     }

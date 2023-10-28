@@ -1,4 +1,7 @@
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::PathBuf,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
 use crate::{
     config::{Config, Parameter},
@@ -6,7 +9,7 @@ use crate::{
     request::{Request, SetRequest},
     resp_value::RespValue,
     response::{ConfigGetResponse, GetResponse, Response, SetResponse},
-    store::{Store, StoreValue},
+    store::{Store, StoreExpiry, StoreValue},
 };
 
 pub struct State {
@@ -50,22 +53,33 @@ impl State {
                 let value = StoreValue {
                     data: value.to_string(),
                     updated: Instant::now(),
-                    expiry: *expiry,
+                    expiry: expiry.map(|d| StoreExpiry::Duration(d)),
                 };
                 self.store.data.insert(key.to_string(), value);
                 Ok(Response::Set(SetResponse::Ok))
             }
             Request::Get(key) => match self.store.data.get(*key) {
                 Some(value) => {
-                    if let Some(expiry) = value.expiry {
-                        if Instant::now() > value.updated + expiry {
-                            // Key has expired
-                            Ok(Response::Get(GetResponse::NotFound))
-                        } else {
-                            Ok(Response::Get(GetResponse::Found(&value.data)))
+                    match value.expiry {
+                        Some(StoreExpiry::Duration(d)) => {
+                            if Instant::now() > value.updated + d {
+                                // Key has expired
+                                Ok(Response::Get(GetResponse::NotFound))
+                            } else {
+                                Ok(Response::Get(GetResponse::Found(&value.data)))
+                            }
                         }
-                    } else {
-                        Ok(Response::Get(GetResponse::Found(&value.data)))
+                        Some(StoreExpiry::UnixTimestampMillis(t)) => {
+                            let unix_time =
+                                SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
+                            if t < unix_time {
+                                // Key has expired
+                                Ok(Response::Get(GetResponse::NotFound))
+                            } else {
+                                Ok(Response::Get(GetResponse::Found(&value.data)))
+                            }
+                        }
+                        None => Ok(Response::Get(GetResponse::Found(&value.data))),
                     }
                 }
                 None => Ok(Response::Get(GetResponse::NotFound)),
