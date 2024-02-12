@@ -23,7 +23,7 @@ mod state;
 mod store;
 
 const ADDRESS: Ipv4Addr = Ipv4Addr::LOCALHOST;
-const PORT: u16 = 6379;
+const DEFAULT_PORT: u16 = 6379;
 
 async fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
     let mut input_buf = [0; 512];
@@ -89,9 +89,17 @@ fn parse_args(args: Args) -> anyhow::Result<Config> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let state = Arc::new(Mutex::new(State::new(parse_args(std::env::args())?)?));
-
-    let listener = TcpListener::bind(SocketAddrV4::new(ADDRESS, PORT)).await?;
+    let args = parse_args(std::env::args())?;
+    let port = args
+        .0
+        .get(&Parameter::Port)
+        .map(|s| {
+            s.parse::<u16>()
+                .unwrap_or_else(|_| panic!("invalid port {:?}", s))
+        })
+        .unwrap_or(DEFAULT_PORT);
+    let state = Arc::new(Mutex::new(State::new(args)?));
+    let listener = TcpListener::bind(SocketAddrV4::new(ADDRESS, port)).await?;
     loop {
         let (stream, _) = listener.accept().await?;
         let state = state.clone();
