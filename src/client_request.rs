@@ -1,10 +1,9 @@
-use bytes::BytesMut;
 use std::time::Duration;
 
 use crate::{config::Parameter, resp_value::RespValue};
 
 #[derive(Debug)]
-pub enum Request<'data> {
+pub enum ClientRequest<'data> {
     CommandDocs,
     Ping,
     Echo(&'data str),
@@ -22,15 +21,7 @@ pub struct SetRequest<'data> {
     pub expiry: Option<Duration>,
 }
 
-impl<'data> Request<'data> {
-    pub fn serialize(&self, buf: &mut BytesMut) {
-        let response_value = match self {
-            Request::Ping => RespValue::Array(vec![RespValue::BulkString("ping")]),
-            _ => todo!(),
-        };
-        response_value.serialize(buf);
-    }
-
+impl<'data> ClientRequest<'data> {
     pub fn deserialize(data: &'data [u8]) -> anyhow::Result<Self> {
         if data.is_empty() {
             return Err(anyhow::format_err!("empty request"));
@@ -39,14 +30,14 @@ impl<'data> Request<'data> {
         match request_value {
             RespValue::Array(elements) => match elements.get(0) {
                 Some(RespValue::BulkString(s)) => match s.to_ascii_lowercase().as_str() {
-                    "ping" => Ok(Request::Ping),
+                    "ping" => Ok(ClientRequest::Ping),
                     "echo" => match elements.get(1) {
-                        Some(RespValue::BulkString(s)) => Ok(Request::Echo(s)),
+                        Some(RespValue::BulkString(s)) => Ok(ClientRequest::Echo(s)),
                         _ => Err(anyhow::format_err!("malformed ECHO command")),
                     },
                     "command" => match elements.get(1) {
                         Some(RespValue::BulkString(s)) => match s.to_ascii_lowercase().as_str() {
-                            "docs" => Ok(Request::CommandDocs),
+                            "docs" => Ok(ClientRequest::CommandDocs),
                             _ => Err(anyhow::format_err!("malformed COMMAND DOCS command")),
                         },
                         _ => Err(anyhow::format_err!("malformed COMMAND command")),
@@ -80,20 +71,20 @@ impl<'data> Request<'data> {
                             _ => None,
                         };
 
-                        Ok(Request::Set(SetRequest { key, value, expiry }))
+                        Ok(ClientRequest::Set(SetRequest { key, value, expiry }))
                     }
                     "get" => {
                         let key = match elements.get(1) {
                             Some(RespValue::BulkString(s)) => *s,
                             _ => return Err(anyhow::format_err!("malformed GET command")),
                         };
-                        Ok(Request::Get(key))
+                        Ok(ClientRequest::Get(key))
                     }
                     "config" => match elements.get(1) {
                         Some(RespValue::BulkString(s)) => match s.to_ascii_lowercase().as_str() {
                             "get" => match elements.get(2) {
                                 Some(RespValue::BulkString(s)) => match Parameter::deserialize(s) {
-                                    Ok(parameter) => Ok(Request::ConfigGet(parameter)),
+                                    Ok(parameter) => Ok(ClientRequest::ConfigGet(parameter)),
                                     Err(_) => {
                                         Err(anyhow::format_err!("invalid config parameter {:?}", s))
                                     }
@@ -108,7 +99,7 @@ impl<'data> Request<'data> {
                         _ => Err(anyhow::format_err!("malformed CONFIG command")),
                     },
                     "keys" => match elements.get(1) {
-                        Some(RespValue::BulkString(_)) => Ok(Request::Keys),
+                        Some(RespValue::BulkString(_)) => Ok(ClientRequest::Keys),
                         _ => Err(anyhow::format_err!("malformed KEYS command",)),
                     },
                     "info" => {
@@ -119,7 +110,7 @@ impl<'data> Request<'data> {
                                 _ => return Err(anyhow::format_err!("malformed INFO command",)),
                             }
                         }
-                        Ok(Request::Info(sections))
+                        Ok(ClientRequest::Info(sections))
                     }
                     command => Err(anyhow::format_err!(
                         "unknown command {:?}",

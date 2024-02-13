@@ -3,7 +3,7 @@ use bytes::BytesMut;
 use crate::{config::Parameter, resp_value::RespValue};
 
 #[derive(Debug)]
-pub enum Response<'request, 'state> {
+pub enum ClientResponse<'request, 'state> {
     CommandDocs,
     Pong,
     Echo(&'request str),
@@ -31,20 +31,20 @@ pub struct ConfigGetResponse<'config> {
     pub values: &'config [String],
 }
 
-impl<'request, 'state> Response<'request, 'state> {
+impl<'request, 'state> ClientResponse<'request, 'state> {
     pub fn serialize(&self, buf: &mut BytesMut) {
         let response_value = match self {
-            Response::Pong => RespValue::SimpleString("PONG"),
-            Response::Echo(s) => RespValue::BulkString(s),
-            Response::CommandDocs => RespValue::Array(vec![]),
-            Response::Set(set_response) => match set_response {
+            ClientResponse::Pong => RespValue::SimpleString("PONG"),
+            ClientResponse::Echo(s) => RespValue::BulkString(s),
+            ClientResponse::CommandDocs => RespValue::Array(vec![]),
+            ClientResponse::Set(set_response) => match set_response {
                 SetResponse::Ok => RespValue::SimpleString("OK"),
             },
-            Response::Get(get_response) => match get_response {
+            ClientResponse::Get(get_response) => match get_response {
                 GetResponse::Found(value) => RespValue::BulkString(value),
                 GetResponse::NotFound => RespValue::NullBulkString,
             },
-            Response::ConfigGet(config_get_response) => match config_get_response {
+            ClientResponse::ConfigGet(config_get_response) => match config_get_response {
                 Some(response) => {
                     let mut values = Vec::new();
                     values.push(RespValue::BulkString(response.parameter.serialize()));
@@ -53,8 +53,8 @@ impl<'request, 'state> Response<'request, 'state> {
                 }
                 None => RespValue::NullBulkString,
             },
-            Response::Keys(keys) => RespValue::Array(keys.to_vec()),
-            Response::Info(keys) => keys.clone(),
+            ClientResponse::Keys(keys) => RespValue::Array(keys.to_vec()),
+            ClientResponse::Info(keys) => keys.clone(),
         };
         response_value.serialize(buf);
     }
