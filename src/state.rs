@@ -100,6 +100,13 @@ impl State {
                     .collect();
                 Ok(Response::Keys(keys))
             }
+            Request::Info(sections) => {
+                if sections.is_empty() || sections.contains(&"replication") {
+                    Ok(Response::Info(RespValue::BulkString("role:master")))
+                } else {
+                    Ok(Response::Info(RespValue::NullBulkString))
+                }
+            }
         }
     }
 }

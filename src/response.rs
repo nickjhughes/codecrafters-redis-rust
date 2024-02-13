@@ -11,6 +11,7 @@ pub enum Response<'request, 'state> {
     Get(GetResponse<'state>),
     ConfigGet(Option<ConfigGetResponse<'state>>),
     Keys(Vec<RespValue<'state>>),
+    Info(RespValue<'state>),
 }
 
 #[derive(Debug)]
@@ -51,6 +52,7 @@ impl<'request, 'state> Response<'request, 'state> {
                 None => RespValue::NullBulkString,
             },
             Response::Keys(keys) => RespValue::Array(keys.to_vec()),
+            Response::Info(keys) => keys.clone(),
         };
         response_value.serialize(buf);
     }

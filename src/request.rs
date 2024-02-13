@@ -11,6 +11,7 @@ pub enum Request<'data> {
     Get(&'data str),
     ConfigGet(Parameter),
     Keys,
+    Info(Vec<&'data str>),
 }
 
 #[derive(Debug)]
@@ -101,6 +102,16 @@ impl<'data> Request<'data> {
                         Some(RespValue::BulkString(_)) => Ok(Request::Keys),
                         _ => Err(anyhow::format_err!("malformed KEYS command",)),
                     },
+                    "info" => {
+                        let mut sections = Vec::new();
+                        for element in elements.iter().skip(1) {
+                            match element {
+                                RespValue::BulkString(section) => sections.push(*section),
+                                _ => return Err(anyhow::format_err!("malformed INFO command",)),
+                            }
+                        }
+                        Ok(Request::Info(sections))
+                    }
                     command => Err(anyhow::format_err!(
                         "unknown command {:?}",
                         command.to_uppercase()
