@@ -1,3 +1,4 @@
+use bytes::BytesMut;
 use std::time::Duration;
 
 use crate::{config::Parameter, resp_value::RespValue};
@@ -22,6 +23,14 @@ pub struct SetRequest<'data> {
 }
 
 impl<'data> Request<'data> {
+    pub fn serialize(&self, buf: &mut BytesMut) {
+        let response_value = match self {
+            Request::Ping => RespValue::Array(vec![RespValue::BulkString("ping")]),
+            _ => todo!(),
+        };
+        response_value.serialize(buf);
+    }
+
     pub fn deserialize(data: &'data [u8]) -> anyhow::Result<Self> {
         if data.is_empty() {
             return Err(anyhow::format_err!("empty request"));

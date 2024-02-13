@@ -20,8 +20,24 @@ pub struct State {
 }
 
 enum RoleState {
-    Slave,
+    Slave(SlaveState),
     Master(MasterState),
+}
+
+#[allow(dead_code)]
+#[derive(Default)]
+struct SlaveState {
+    handshake_step_completed: HandshakeStep,
+}
+
+#[derive(Default)]
+#[allow(dead_code)]
+enum HandshakeStep {
+    #[default]
+    None,
+    Ping,
+    ReplConf,
+    PSync,
 }
 
 struct MasterState {
@@ -60,7 +76,7 @@ impl State {
         };
 
         let role_state = if config.0.contains_key(&Parameter::ReplicaOf) {
-            RoleState::Slave
+            RoleState::Slave(SlaveState::default())
         } else {
             RoleState::Master(MasterState::default())
         };
@@ -71,6 +87,24 @@ impl State {
             role_state,
         })
     }
+
+    pub fn is_slave(&self) -> bool {
+        matches!(self.role_state, RoleState::Slave(_))
+    }
+
+    // pub fn perform_handshake(&mut self) {
+    //     match &mut self.role_state {
+    //         RoleState::Slave(slave_state) => match slave_state.handshake_step_completed {
+    //             HandshakeStep::None => {
+    //                 // TODO: Send ping to master
+    //             }
+    //             HandshakeStep::Ping => {}
+    //             HandshakeStep::ReplConf => {}
+    //             HandshakeStep::PSync => {}
+    //         },
+    //         RoleState::Master(_) => {}
+    //     }
+    // }
 
     pub fn handle_request<'request, 'state>(
         &'state mut self,
@@ -135,15 +169,12 @@ impl State {
                 if sections.is_empty() || sections.contains(&"replication") {
                     let mut values: Vec<String> = Vec::new();
                     values.push(format!("role:{}", self.role_state));
-                    match &self.role_state {
-                        RoleState::Master(master_state) => {
-                            values.push(format!("master_replid:{}", master_state.replication_id));
-                            values.push(format!(
-                                "master_repl_offset:{}",
-                                master_state.replication_offset
-                            ));
-                        }
-                        _ => {}
+                    if let RoleState::Master(master_state) = &self.role_state {
+                        values.push(format!("master_replid:{}", master_state.replication_id));
+                        values.push(format!(
+                            "master_repl_offset:{}",
+                            master_state.replication_offset
+                        ));
                     }
                     Ok(Response::Info(RespValue::OwnedBulkString(
                         values.join("\n"),
@@ -160,7 +191,7 @@ impl std::fmt::Display for RoleState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RoleState::Master(_) => write!(f, "master"),
-            RoleState::Slave => write!(f, "slave"),
+            RoleState::Slave(_) => write!(f, "slave"),
         }
     }
 }
