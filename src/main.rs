@@ -23,6 +23,7 @@ mod store;
 
 const ADDRESS: Ipv4Addr = Ipv4Addr::LOCALHOST;
 const DEFAULT_PORT: u16 = 6379;
+const REPLICATION_ID: &str = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
 
 async fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
     let mut input_buf = [0; 512];

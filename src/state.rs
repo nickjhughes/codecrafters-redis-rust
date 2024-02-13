@@ -10,17 +10,32 @@ use crate::{
     resp_value::RespValue,
     response::{ConfigGetResponse, GetResponse, Response, SetResponse},
     store::{Store, StoreExpiry, StoreValue},
+    REPLICATION_ID,
 };
 
 pub struct State {
     store: Store,
-    role: Role,
     config: Config,
+    role_state: RoleState,
 }
 
-enum Role {
-    Master,
+enum RoleState {
     Slave,
+    Master(MasterState),
+}
+
+struct MasterState {
+    replication_id: String,
+    replication_offset: usize,
+}
+
+impl Default for MasterState {
+    fn default() -> Self {
+        MasterState {
+            replication_id: REPLICATION_ID.into(),
+            replication_offset: 0,
+        }
+    }
 }
 
 impl State {
@@ -44,16 +59,16 @@ impl State {
             Store::default()
         };
 
-        let role = if config.0.contains_key(&Parameter::ReplicaOf) {
-            Role::Slave
+        let role_state = if config.0.contains_key(&Parameter::ReplicaOf) {
+            RoleState::Slave
         } else {
-            Role::Master
+            RoleState::Master(MasterState::default())
         };
 
         Ok(State {
             store,
             config,
-            role,
+            role_state,
         })
     }
 
@@ -118,10 +133,21 @@ impl State {
             }
             Request::Info(sections) => {
                 if sections.is_empty() || sections.contains(&"replication") {
-                    Ok(Response::Info(RespValue::OwnedBulkString(format!(
-                        "role:{}",
-                        self.role
-                    ))))
+                    let mut values: Vec<String> = Vec::new();
+                    values.push(format!("role:{}", self.role_state));
+                    match &self.role_state {
+                        RoleState::Master(master_state) => {
+                            values.push(format!("master_replid:{}", master_state.replication_id));
+                            values.push(format!(
+                                "master_repl_offset:{}",
+                                master_state.replication_offset
+                            ));
+                        }
+                        _ => {}
+                    }
+                    Ok(Response::Info(RespValue::OwnedBulkString(
+                        values.join("\n"),
+                    )))
                 } else {
                     Ok(Response::Info(RespValue::NullBulkString))
                 }
@@ -130,11 +156,11 @@ impl State {
     }
 }
 
-impl std::fmt::Display for Role {
+impl std::fmt::Display for RoleState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Role::Master => write!(f, "master"),
-            Role::Slave => write!(f, "slave"),
+            RoleState::Master(_) => write!(f, "master"),
+            RoleState::Slave => write!(f, "slave"),
         }
     }
 }
