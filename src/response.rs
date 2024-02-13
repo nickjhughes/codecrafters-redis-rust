@@ -28,7 +28,7 @@ pub enum SetResponse {
 #[derive(Debug)]
 pub struct ConfigGetResponse<'config> {
     pub parameter: Parameter,
-    pub value: &'config str,
+    pub values: &'config [String],
 }
 
 impl<'request, 'state> Response<'request, 'state> {
@@ -45,10 +45,12 @@ impl<'request, 'state> Response<'request, 'state> {
                 GetResponse::NotFound => RespValue::NullBulkString,
             },
             Response::ConfigGet(config_get_response) => match config_get_response {
-                Some(response) => RespValue::Array(vec![
-                    RespValue::BulkString(response.parameter.serialize()),
-                    RespValue::BulkString(response.value),
-                ]),
+                Some(response) => {
+                    let mut values = Vec::new();
+                    values.push(RespValue::BulkString(response.parameter.serialize()));
+                    values.extend(response.values.iter().map(|v| RespValue::BulkString(v)));
+                    RespValue::Array(values)
+                }
                 None => RespValue::NullBulkString,
             },
             Response::Keys(keys) => RespValue::Array(keys.to_vec()),

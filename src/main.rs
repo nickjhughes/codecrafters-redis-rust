@@ -1,6 +1,5 @@
 use bytes::BytesMut;
 use std::{
-    env::Args,
     net::{Ipv4Addr, SocketAddrV4},
     sync::{Arc, Mutex},
 };
@@ -69,32 +68,14 @@ async fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
     }
 }
 
-/// Load config from command line arguments
-fn parse_args(args: Args) -> anyhow::Result<Config> {
-    let args = args.skip(1);
-
-    let mut config = Config::default();
-    let mut current_key = None;
-    for arg in args {
-        if let Some(current_key) = current_key.take() {
-            config.0.insert(current_key, arg);
-        } else if arg.starts_with("--") {
-            current_key = Some(Parameter::deserialize(arg.strip_prefix("--").unwrap())?);
-        } else {
-            anyhow::bail!("invalid argument {:?}", arg)
-        }
-    }
-    Ok(config)
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = parse_args(std::env::args())?;
+    let args = Config::parse(std::env::args())?;
     let port = args
         .0
         .get(&Parameter::Port)
         .map(|s| {
-            s.parse::<u16>()
+            s[0].parse::<u16>()
                 .unwrap_or_else(|_| panic!("invalid port {:?}", s))
         })
         .unwrap_or(DEFAULT_PORT);

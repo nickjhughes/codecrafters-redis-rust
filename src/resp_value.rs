@@ -8,6 +8,7 @@ pub enum RespValue<'data> {
     SimpleString(&'data str),
     SimpleError(&'data str),
     Integer(i64),
+    OwnedBulkString(String),
     BulkString(&'data str),
     NullBulkString,
     Array(Vec<RespValue<'data>>),
@@ -29,6 +30,7 @@ impl<'data> RespValue<'data> {
             RespValue::SimpleString(_) => b'+',
             RespValue::SimpleError(_) => b'-',
             RespValue::Integer(_) => b':',
+            RespValue::OwnedBulkString(_) => b'$',
             RespValue::BulkString(_) => b'$',
             RespValue::NullBulkString => b'$',
             RespValue::Array(_) => b'*',
@@ -50,6 +52,7 @@ impl<'data> RespValue<'data> {
             RespValue::SimpleString(_) => true,
             RespValue::SimpleError(_) => true,
             RespValue::Integer(_) => true,
+            RespValue::OwnedBulkString(_) => true,
             RespValue::BulkString(_) => true,
             RespValue::NullBulkString => true,
             RespValue::Array(_) => false,
@@ -74,6 +77,11 @@ impl<'data> RespValue<'data> {
             }
             RespValue::Integer(n) => {
                 buf.put(n.to_string().as_bytes());
+            }
+            RespValue::OwnedBulkString(s) => {
+                buf.put(s.len().to_string().as_bytes());
+                buf.put(TERMINATOR);
+                buf.put(s.as_bytes());
             }
             RespValue::BulkString(s) => {
                 buf.put(s.len().to_string().as_bytes());

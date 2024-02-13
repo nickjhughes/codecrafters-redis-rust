@@ -14,7 +14,13 @@ use crate::{
 
 pub struct State {
     store: Store,
+    role: Role,
     config: Config,
+}
+
+enum Role {
+    Master,
+    Slave,
 }
 
 impl State {
@@ -24,8 +30,8 @@ impl State {
         {
             let path = {
                 let mut p = PathBuf::new();
-                p.push(config.0.get(&Parameter::Dir).unwrap());
-                p.push(config.0.get(&Parameter::DbFilename).unwrap());
+                p.push(config.0.get(&Parameter::Dir).unwrap()[0].clone());
+                p.push(config.0.get(&Parameter::DbFilename).unwrap()[0].clone());
                 p
             };
             if path.exists() {
@@ -38,7 +44,17 @@ impl State {
             Store::default()
         };
 
-        Ok(State { store, config })
+        let role = if config.0.contains_key(&Parameter::ReplicaOf) {
+            Role::Slave
+        } else {
+            Role::Master
+        };
+
+        Ok(State {
+            store,
+            config,
+            role,
+        })
     }
 
     pub fn handle_request<'request, 'state>(
@@ -85,9 +101,9 @@ impl State {
                 None => Ok(Response::Get(GetResponse::NotFound)),
             },
             Request::ConfigGet(parameter) => match self.config.0.get(parameter) {
-                Some(value) => Ok(Response::ConfigGet(Some(ConfigGetResponse {
-                    parameter: parameter.clone(),
-                    value,
+                Some(values) => Ok(Response::ConfigGet(Some(ConfigGetResponse {
+                    parameter: *parameter,
+                    values,
                 }))),
                 None => Ok(Response::ConfigGet(None)),
             },
@@ -102,11 +118,23 @@ impl State {
             }
             Request::Info(sections) => {
                 if sections.is_empty() || sections.contains(&"replication") {
-                    Ok(Response::Info(RespValue::BulkString("role:master")))
+                    Ok(Response::Info(RespValue::OwnedBulkString(format!(
+                        "role:{}",
+                        self.role
+                    ))))
                 } else {
                     Ok(Response::Info(RespValue::NullBulkString))
                 }
             }
+        }
+    }
+}
+
+impl std::fmt::Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Role::Master => write!(f, "master"),
+            Role::Slave => write!(f, "slave"),
         }
     }
 }
