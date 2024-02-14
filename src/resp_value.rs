@@ -12,6 +12,7 @@ pub enum RespValue<'data> {
     OwnedBulkString(String),
     BulkString(&'data str),
     NullBulkString,
+    RawBytes(&'data [u8]),
     Array(Vec<RespValue<'data>>),
     NullArray,
     Null,
@@ -35,6 +36,7 @@ impl<'data> RespValue<'data> {
             RespValue::OwnedBulkString(_) => b'$',
             RespValue::BulkString(_) => b'$',
             RespValue::NullBulkString => b'$',
+            RespValue::RawBytes(_) => b'$',
             RespValue::Array(_) => b'*',
             RespValue::NullArray => b'*',
             RespValue::Null => b'_',
@@ -58,6 +60,7 @@ impl<'data> RespValue<'data> {
             RespValue::OwnedBulkString(_) => true,
             RespValue::BulkString(_) => true,
             RespValue::NullBulkString => true,
+            RespValue::RawBytes(_) => false,
             RespValue::Array(_) => false,
             RespValue::NullArray => true,
             RespValue::Null => true,
@@ -96,6 +99,11 @@ impl<'data> RespValue<'data> {
             }
             RespValue::NullBulkString | RespValue::NullArray => {
                 buf.put(&b"-1"[..]);
+            }
+            RespValue::RawBytes(b) => {
+                buf.put(b.len().to_string().as_bytes());
+                buf.put(TERMINATOR);
+                buf.put(*b);
             }
             RespValue::Array(elements) => {
                 buf.put(elements.len().to_string().as_bytes());
@@ -168,31 +176,46 @@ impl<'data> RespValue<'data> {
                 }
             }
             b'$' => {
-                // Bulk string: "$<length>\r\n<data>\r\n"
+                // Bulk string: "$<length>\r\n<data>\r\n", or
+                // Raw bytes: "$<length>\r\n<data>"
                 if let Some(terminator_index) = find_terminator(data) {
                     if let Ok(digits_str) = std::str::from_utf8(&data[1..terminator_index]) {
-                        if let Ok(string_len) = digits_str.parse::<usize>() {
-                            if let Ok(string) = std::str::from_utf8(
-                                &data[terminator_index + 2..terminator_index + 2 + string_len],
-                            ) {
+                        if let Ok(data_len) = digits_str.parse::<usize>() {
+                            if &data[terminator_index + 2 + data_len
+                                ..terminator_index + 2 + data_len + 2]
+                                != TERMINATOR
+                            {
+                                // Raw bytes
+                                let bytes =
+                                    &data[terminator_index + 2..terminator_index + 2 + data_len];
                                 Ok((
-                                    RespValue::BulkString(string),
-                                    &data[terminator_index + 2 + string_len + 2..],
+                                    RespValue::RawBytes(bytes),
+                                    &data[terminator_index + 2 + data_len..],
                                 ))
                             } else {
-                                Err(anyhow::format_err!("invalid bulk string"))
+                                // Bulk string
+                                if let Ok(string) = std::str::from_utf8(
+                                    &data[terminator_index + 2..terminator_index + 2 + data_len],
+                                ) {
+                                    Ok((
+                                        RespValue::BulkString(string),
+                                        &data[terminator_index + 2 + data_len + 2..],
+                                    ))
+                                } else {
+                                    Err(anyhow::format_err!("invalid bulk string"))
+                                }
                             }
                         } else if digits_str == "-1" {
                             // Null bulk string special case
                             Ok((RespValue::NullBulkString, &data[terminator_index + 2..]))
                         } else {
-                            Err(anyhow::format_err!("invalid bulk string"))
+                            Err(anyhow::format_err!("invalid bulk string/raw bytes"))
                         }
                     } else {
-                        Err(anyhow::format_err!("invalid bulk string"))
+                        Err(anyhow::format_err!("invalid bulk string/raw bytes"))
                     }
                 } else {
-                    Err(anyhow::format_err!("unterminated array"))
+                    Err(anyhow::format_err!("invalid bulk string/raw bytes"))
                 }
             }
             b'*' => {

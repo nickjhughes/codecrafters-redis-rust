@@ -12,6 +12,15 @@ use crate::{
     REPLICATION_ID,
 };
 
+const EMPTY_RDB_FILE: &[u8] = &[
+    0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x31, 0x31, 0xfa, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73,
+    0x2d, 0x76, 0x65, 0x72, 0x05, 0x37, 0x2e, 0x32, 0x2e, 0x30, 0xfa, 0x0a, 0x72, 0x65, 0x64, 0x69,
+    0x73, 0x2d, 0x62, 0x69, 0x74, 0x73, 0xc0, 0x40, 0xfa, 0x05, 0x63, 0x74, 0x69, 0x6d, 0x65, 0xc2,
+    0x6d, 0x08, 0xbc, 0x65, 0xfa, 0x08, 0x75, 0x73, 0x65, 0x64, 0x2d, 0x6d, 0x65, 0x6d, 0xc2, 0xb0,
+    0xc4, 0x10, 0x00, 0xfa, 0x08, 0x61, 0x6f, 0x66, 0x2d, 0x62, 0x61, 0x73, 0x65, 0xc0, 0x00, 0xff,
+    0xf0, 0x6e, 0x3b, 0xfe, 0xc0, 0xff, 0x5a, 0xa2,
+];
+
 pub struct State {
     store: Store,
     config: Config,
@@ -47,6 +56,7 @@ enum HandshakeState {
 struct MasterState {
     replication_id: String,
     replication_offset: isize,
+    send_rdb: bool,
 }
 
 impl Default for MasterState {
@@ -54,6 +64,7 @@ impl Default for MasterState {
         MasterState {
             replication_id: REPLICATION_ID.into(),
             replication_offset: 0,
+            send_rdb: false,
         }
     }
 }
@@ -126,7 +137,14 @@ impl State {
                 }
                 _ => None,
             },
-            RoleState::Master(_) => None,
+            RoleState::Master(master_state) => {
+                if master_state.send_rdb {
+                    master_state.send_rdb = false;
+                    Some(Message::DatabaseFile(EMPTY_RDB_FILE.to_vec()))
+                } else {
+                    None
+                }
+            }
         })
     }
 
@@ -257,6 +275,7 @@ impl State {
                         offset,
                     } => {
                         if replication_id == "?" && *offset == -1 {
+                            master_state.send_rdb = true;
                             Ok(Some(Message::FullResync {
                                 replication_id: master_state.replication_id.clone(),
                                 offset: master_state.replication_offset,

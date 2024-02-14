@@ -45,6 +45,7 @@ pub enum Message {
         key: ConfigKey,
     },
     ConfigGetResponse(Option<ConfigGetResponse>),
+    DatabaseFile(Vec<u8>),
 }
 
 #[derive(Debug)]
@@ -137,6 +138,7 @@ impl Message {
                 replication_id,
                 offset,
             } => RespValue::OwnedSimpleString(format!("FULLRESYNC {replication_id} {offset}")),
+            Message::DatabaseFile(bytes) => RespValue::RawBytes(bytes),
         };
         response_value.serialize(buf);
     }
@@ -148,6 +150,7 @@ impl Message {
         let (response_value, _) = RespValue::deserialize(data)?;
 
         match response_value {
+            RespValue::RawBytes(bytes) => Ok(Message::DatabaseFile(bytes.to_vec())),
             RespValue::SimpleString(s) => match s.to_ascii_uppercase().as_str() {
                 "PONG" => Ok(Message::Pong),
                 "OK" => Ok(Message::Ok),
