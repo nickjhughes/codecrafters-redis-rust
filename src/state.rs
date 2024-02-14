@@ -9,7 +9,7 @@ use crate::{
     message::{ConfigGetResponse, GetResponse, Message},
     rdb::read_rdb_file,
     store::{Store, StoreExpiry, StoreValue},
-    REPLICATION_ID,
+    Connection, ConnectionType, REPLICATION_ID,
 };
 
 const EMPTY_RDB_FILE: &[u8] = &[
@@ -107,38 +107,47 @@ impl State {
         matches!(self.role_state, RoleState::Slave(_))
     }
 
-    pub fn next_outgoing(&mut self) -> anyhow::Result<Option<Message>> {
+    pub fn next_outgoing(
+        &mut self,
+        connection: &mut Connection,
+    ) -> anyhow::Result<Option<Message>> {
         Ok(match &mut self.role_state {
-            RoleState::Slave(slave_state) => match slave_state.handshake_state {
-                HandshakeState::Init => {
-                    slave_state.handshake_state = HandshakeState::PingSent;
-                    Some(Message::Ping)
+            RoleState::Slave(slave_state) => {
+                if matches!(connection.ty, ConnectionType::Master) {
+                    match slave_state.handshake_state {
+                        HandshakeState::Init => {
+                            slave_state.handshake_state = HandshakeState::PingSent;
+                            Some(Message::Ping)
+                        }
+                        HandshakeState::PongRcvd => {
+                            slave_state.handshake_state = HandshakeState::ReplConf1Sent;
+                            Some(Message::ReplicationConfig {
+                                key: "listening-port".to_string(),
+                                value: self.config.0.get(&ConfigKey::Port).unwrap()[0].to_string(),
+                            })
+                        }
+                        HandshakeState::ReplConf1Rcvd => {
+                            slave_state.handshake_state = HandshakeState::ReplConf2Sent;
+                            Some(Message::ReplicationConfig {
+                                key: "capa".to_string(),
+                                value: "psync2".to_string(),
+                            })
+                        }
+                        HandshakeState::ReplConf2Rcvd => {
+                            slave_state.handshake_state = HandshakeState::PSyncSent;
+                            Some(Message::PSync {
+                                replication_id: "?".into(),
+                                offset: -1,
+                            })
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
                 }
-                HandshakeState::PongRcvd => {
-                    slave_state.handshake_state = HandshakeState::ReplConf1Sent;
-                    Some(Message::ReplicationConfig {
-                        key: "listening-port".to_string(),
-                        value: self.config.0.get(&ConfigKey::Port).unwrap()[0].to_string(),
-                    })
-                }
-                HandshakeState::ReplConf1Rcvd => {
-                    slave_state.handshake_state = HandshakeState::ReplConf2Sent;
-                    Some(Message::ReplicationConfig {
-                        key: "capa".to_string(),
-                        value: "psync2".to_string(),
-                    })
-                }
-                HandshakeState::ReplConf2Rcvd => {
-                    slave_state.handshake_state = HandshakeState::PSyncSent;
-                    Some(Message::PSync {
-                        replication_id: "?".into(),
-                        offset: -1,
-                    })
-                }
-                _ => None,
-            },
+            }
             RoleState::Master(master_state) => {
-                if master_state.send_rdb {
+                if matches!(connection.ty, ConnectionType::Slave) && master_state.send_rdb {
                     master_state.send_rdb = false;
                     Some(Message::DatabaseFile(EMPTY_RDB_FILE.to_vec()))
                 } else {
@@ -148,7 +157,11 @@ impl State {
         })
     }
 
-    pub fn handle_incoming(&mut self, message: &Message) -> anyhow::Result<Option<Message>> {
+    pub fn handle_incoming(
+        &mut self,
+        message: &Message,
+        connection: &mut Connection,
+    ) -> anyhow::Result<Option<Message>> {
         match &mut self.role_state {
             RoleState::Slave(slave_state) => match message {
                 Message::Pong => {
@@ -267,7 +280,8 @@ impl State {
                         }))
                     }
                     Message::ReplicationConfig { .. } => {
-                        // Ignore for now
+                        // We know we're connected to a slave, rather than a client, now
+                        connection.ty = ConnectionType::Slave;
                         Ok(Some(Message::Ok))
                     }
                     Message::PSync {

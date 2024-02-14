@@ -25,11 +25,32 @@ const ADDRESS: Ipv4Addr = Ipv4Addr::LOCALHOST;
 const DEFAULT_PORT: u16 = 6379;
 const REPLICATION_ID: &str = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
 
-async fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
+#[derive(Debug)]
+pub struct Connection {
+    pub ty: ConnectionType,
+}
+
+#[derive(Debug)]
+pub enum ConnectionType {
+    Client,
+    Slave,
+    Master,
+}
+
+async fn handle_connection(
+    mut stream: TcpStream,
+    state: Arc<Mutex<State>>,
+    connection_type: ConnectionType,
+) {
     let mut input_buf = [0; 512];
     let mut output_buf = BytesMut::with_capacity(512);
+
+    let mut connection = Connection {
+        ty: connection_type,
+    };
+
     loop {
-        if let Some(message) = state.lock().await.next_outgoing().unwrap() {
+        if let Some(message) = state.lock().await.next_outgoing(&mut connection).unwrap() {
             output_buf.clear();
             message.serialize(&mut output_buf);
             stream
@@ -52,7 +73,7 @@ async fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         if let Some(response) = state
                             .lock()
                             .await
-                            .handle_incoming(&message)
+                            .handle_incoming(&message, &mut connection)
                             .unwrap_or_else(|_| panic!("failed to handle message {:?}", message))
                         {
                             response.serialize(&mut output_buf);
@@ -103,7 +124,7 @@ async fn main() -> anyhow::Result<()> {
         let stream = TcpStream::connect(master_address).await?;
         let state = state.clone();
         tokio::spawn(async move {
-            handle_connection(stream, state).await;
+            handle_connection(stream, state, ConnectionType::Master).await;
         });
     }
 
@@ -112,7 +133,7 @@ async fn main() -> anyhow::Result<()> {
         let (stream, _) = listener.accept().await?;
         let state = state.clone();
         tokio::spawn(async move {
-            handle_connection(stream, state).await;
+            handle_connection(stream, state, ConnectionType::Client).await;
         });
     }
 }
