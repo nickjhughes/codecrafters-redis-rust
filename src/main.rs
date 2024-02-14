@@ -25,57 +25,13 @@ const ADDRESS: Ipv4Addr = Ipv4Addr::LOCALHOST;
 const DEFAULT_PORT: u16 = 6379;
 const REPLICATION_ID: &str = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
 
-async fn client_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
+async fn handle_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
     let mut input_buf = [0; 512];
     let mut output_buf = BytesMut::with_capacity(512);
     loop {
-        match stream.read(&mut input_buf).await {
-            Ok(bytes_read) => {
-                if bytes_read == 0 {
-                    continue;
-                }
-
-                // TODO: Deal with incomplete frames of data
-
-                output_buf.clear();
-                match Message::deserialize(&input_buf[0..bytes_read]) {
-                    Ok(request) => {
-                        state
-                            .lock()
-                            .await
-                            .handle_request(&request)
-                            .unwrap_or_else(|_| panic!("failed to handle request {:?}", request))
-                            .serialize(&mut output_buf);
-                        stream
-                            .write_all(&output_buf)
-                            .await
-                            .expect("failed to write to stream");
-                    }
-                    Err(e) => {
-                        RespValue::SimpleError(&format!("ERR {:?}", e)).serialize(&mut output_buf);
-                        stream
-                            .write_all(&output_buf)
-                            .await
-                            .expect("failed to write to stream");
-                        eprintln!("failed to deserialize request: {:?}", e)
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("stream read error: {:?}", e);
-                break;
-            }
-        }
-    }
-}
-
-async fn master_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
-    let mut input_buf = [0; 512];
-    let mut output_buf = BytesMut::with_capacity(512);
-    loop {
-        if let Some(request) = state.lock().await.next_request().unwrap() {
+        if let Some(message) = state.lock().await.next_outgoing().unwrap() {
             output_buf.clear();
-            request.serialize(&mut output_buf);
+            message.serialize(&mut output_buf);
             stream
                 .write_all(&output_buf)
                 .await
@@ -90,9 +46,21 @@ async fn master_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
 
                 // TODO: Deal with incomplete frames of data
 
+                output_buf.clear();
                 match Message::deserialize(&input_buf[0..bytes_read]) {
-                    Ok(response) => {
-                        state.lock().await.handle_response(&response);
+                    Ok(message) => {
+                        if let Some(response) = state
+                            .lock()
+                            .await
+                            .handle_incoming(&message)
+                            .unwrap_or_else(|_| panic!("failed to handle message {:?}", message))
+                        {
+                            response.serialize(&mut output_buf);
+                            stream
+                                .write_all(&output_buf)
+                                .await
+                                .expect("failed to write to stream");
+                        }
                     }
                     Err(e) => {
                         RespValue::SimpleError(&format!("ERR {:?}", e)).serialize(&mut output_buf);
@@ -100,7 +68,7 @@ async fn master_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             .write_all(&output_buf)
                             .await
                             .expect("failed to write to stream");
-                        eprintln!("failed to deserialize response: {:?}", e)
+                        eprintln!("failed to deserialize request: {:?}", e)
                     }
                 }
             }
@@ -135,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
         let stream = TcpStream::connect(master_address).await?;
         let state = state.clone();
         tokio::spawn(async move {
-            master_connection(stream, state).await;
+            handle_connection(stream, state).await;
         });
     }
 
@@ -144,7 +112,7 @@ async fn main() -> anyhow::Result<()> {
         let (stream, _) = listener.accept().await?;
         let state = state.clone();
         tokio::spawn(async move {
-            client_connection(stream, state).await;
+            handle_connection(stream, state).await;
         });
     }
 }

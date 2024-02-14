@@ -5,6 +5,7 @@ const TERMINATOR: &[u8] = b"\r\n";
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub enum RespValue<'data> {
+    OwnedSimpleString(String),
     SimpleString(&'data str),
     SimpleError(&'data str),
     Integer(i64),
@@ -27,6 +28,7 @@ pub enum RespValue<'data> {
 impl<'data> RespValue<'data> {
     fn tag(&self) -> u8 {
         match self {
+            RespValue::OwnedSimpleString(_) => b'+',
             RespValue::SimpleString(_) => b'+',
             RespValue::SimpleError(_) => b'-',
             RespValue::Integer(_) => b':',
@@ -49,6 +51,7 @@ impl<'data> RespValue<'data> {
 
     fn has_final_terminator(&self) -> bool {
         match self {
+            RespValue::OwnedSimpleString(_) => true,
             RespValue::SimpleString(_) => true,
             RespValue::SimpleError(_) => true,
             RespValue::Integer(_) => true,
@@ -72,6 +75,9 @@ impl<'data> RespValue<'data> {
     pub fn serialize(&self, buf: &mut BytesMut) {
         buf.put_u8(self.tag());
         match self {
+            RespValue::OwnedSimpleString(s) => {
+                buf.put(s.as_bytes());
+            }
             RespValue::SimpleString(s) | RespValue::SimpleError(s) => {
                 buf.put(s.as_bytes());
             }

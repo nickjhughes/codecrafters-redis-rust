@@ -136,11 +136,7 @@ impl Message {
             Message::FullResync {
                 replication_id,
                 offset,
-            } => RespValue::Array(vec![
-                RespValue::BulkString("FULLRESYNC"),
-                RespValue::BulkString(replication_id),
-                RespValue::OwnedBulkString(offset.to_string()),
-            ]),
+            } => RespValue::OwnedSimpleString(format!("FULLRESYNC {replication_id} {offset}")),
         };
         response_value.serialize(buf);
     }
@@ -267,6 +263,20 @@ impl Message {
                         Ok(Message::ReplicationConfig {
                             key: key.to_string(),
                             value: value.to_string(),
+                        })
+                    }
+                    "PSYNC" => {
+                        let replication_id = match elements.get(1) {
+                            Some(RespValue::BulkString(s)) => *s,
+                            _ => return Err(anyhow::format_err!("malformed PSYNC command")),
+                        };
+                        let offset = match elements.get(2) {
+                            Some(RespValue::BulkString(s)) => s.parse::<isize>()?,
+                            _ => return Err(anyhow::format_err!("malformed PSYNC command")),
+                        };
+                        Ok(Message::PSync {
+                            replication_id: replication_id.to_string(),
+                            offset,
                         })
                     }
                     command => Err(anyhow::format_err!(
