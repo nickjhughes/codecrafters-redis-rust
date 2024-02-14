@@ -1,5 +1,5 @@
 use bytes::BytesMut;
-use master_response::MasterResponse;
+use message::Message;
 use std::{
     net::{Ipv4Addr, SocketAddrV4},
     sync::Arc,
@@ -10,18 +10,14 @@ use tokio::{
     sync::Mutex,
 };
 
-use client_request::ClientRequest;
-use config::{Config, Parameter};
+use config::{Config, ConfigKey};
 use resp_value::RespValue;
 use state::State;
 
-mod client_request;
-mod client_response;
 mod config;
-mod master_response;
+mod message;
 mod rdb;
 mod resp_value;
-mod slave_request;
 mod state;
 mod store;
 
@@ -42,7 +38,7 @@ async fn client_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                 // TODO: Deal with incomplete frames of data
 
                 output_buf.clear();
-                match ClientRequest::deserialize(&input_buf[0..bytes_read]) {
+                match Message::deserialize(&input_buf[0..bytes_read]) {
                     Ok(request) => {
                         state
                             .lock()
@@ -94,7 +90,7 @@ async fn master_connection(mut stream: TcpStream, state: Arc<Mutex<State>>) {
 
                 // TODO: Deal with incomplete frames of data
 
-                match MasterResponse::deserialize(&input_buf[0..bytes_read]) {
+                match Message::deserialize(&input_buf[0..bytes_read]) {
                     Ok(response) => {
                         state.lock().await.handle_response(&response);
                     }
@@ -121,13 +117,13 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::parse(std::env::args())?;
     let port = config
         .0
-        .get(&Parameter::Port)
+        .get(&ConfigKey::Port)
         .map(|s| {
             s[0].parse::<u16>()
                 .unwrap_or_else(|_| panic!("invalid port {:?}", s))
         })
         .unwrap_or(DEFAULT_PORT);
-    let replica_of = config.0.get(&Parameter::ReplicaOf).cloned();
+    let replica_of = config.0.get(&ConfigKey::ReplicaOf).cloned();
     let state = Arc::new(Mutex::new(State::new(config)?));
 
     if state.lock().await.is_slave() {
