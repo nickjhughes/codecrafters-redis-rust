@@ -255,6 +255,20 @@ impl Message {
                         }
                         Ok(Message::InfoRequest { sections })
                     }
+                    "REPLCONF" => {
+                        let key = match elements.get(1) {
+                            Some(RespValue::BulkString(s)) => *s,
+                            _ => return Err(anyhow::format_err!("malformed REPLCONF command")),
+                        };
+                        let value = match elements.get(2) {
+                            Some(RespValue::BulkString(s)) => *s,
+                            _ => return Err(anyhow::format_err!("malformed REPLCONF command")),
+                        };
+                        Ok(Message::ReplicationConfig {
+                            key: key.to_string(),
+                            value: value.to_string(),
+                        })
+                    }
                     command => Err(anyhow::format_err!(
                         "unknown command {:?}",
                         command.to_uppercase()

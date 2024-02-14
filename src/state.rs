@@ -227,6 +227,10 @@ impl State {
                     sections: section_maps,
                 })
             }
+            Message::ReplicationConfig { .. } => {
+                // Ignore for now
+                Ok(Message::Ok)
+            }
             _ => Err(anyhow::format_err!(
                 "invalid message from client {:?}",
                 request
