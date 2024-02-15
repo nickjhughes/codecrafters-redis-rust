@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 
 use crate::{config::ConfigKey, resp_value::RespValue};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Message {
     Ping,
     Pong,
@@ -48,19 +48,23 @@ pub enum Message {
     DatabaseFile(Vec<u8>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GetResponse {
     Found(String),
     NotFound,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConfigGetResponse {
     pub key: ConfigKey,
     pub values: Vec<String>,
 }
 
 impl Message {
+    pub fn is_write_command(&self) -> bool {
+        matches!(self, Message::Set { .. } | Message::GetRequest { .. })
+    }
+
     pub fn serialize(&self, buf: &mut BytesMut) {
         let response_value = match self {
             Message::Ping => RespValue::Array(vec![RespValue::BulkString("PING")]),
@@ -69,7 +73,11 @@ impl Message {
             Message::CommandDocs => RespValue::Array(vec![]),
             Message::Ok => RespValue::SimpleString("OK"),
             Message::Set { key, value, expiry } => {
-                let mut values = vec![RespValue::BulkString(key), RespValue::BulkString(value)];
+                let mut values = vec![
+                    RespValue::BulkString("SET"),
+                    RespValue::BulkString(key),
+                    RespValue::BulkString(value),
+                ];
                 if let Some(expiry) = expiry {
                     values.push(RespValue::BulkString("PX"));
                     values.push(RespValue::OwnedBulkString(expiry.as_millis().to_string()));
@@ -143,36 +151,41 @@ impl Message {
         response_value.serialize(buf);
     }
 
-    pub fn deserialize(data: &[u8]) -> anyhow::Result<Self> {
+    pub fn deserialize(data: &[u8]) -> anyhow::Result<(Self, &[u8])> {
         if data.is_empty() {
             return Err(anyhow::format_err!("empty message"));
         }
-        let (response_value, _) = RespValue::deserialize(data)?;
+        let (response_value, remainder) = RespValue::deserialize(data)?;
 
         match response_value {
-            RespValue::RawBytes(bytes) => Ok(Message::DatabaseFile(bytes.to_vec())),
+            RespValue::RawBytes(bytes) => Ok((Message::DatabaseFile(bytes.to_vec()), remainder)),
             RespValue::SimpleString(s) => match s.to_ascii_uppercase().as_str() {
-                "PONG" => Ok(Message::Pong),
-                "OK" => Ok(Message::Ok),
+                "PONG" => Ok((Message::Pong, remainder)),
+                "OK" => Ok((Message::Ok, remainder)),
                 response if response.starts_with("FULLRESYNC") => {
                     let parts = response.split_ascii_whitespace().collect::<Vec<&str>>();
-                    Ok(Message::FullResync {
-                        replication_id: parts[1].to_owned(),
-                        offset: parts[2].parse::<isize>()?,
-                    })
+                    Ok((
+                        Message::FullResync {
+                            replication_id: parts[1].to_owned(),
+                            offset: parts[2].parse::<isize>()?,
+                        },
+                        remainder,
+                    ))
                 }
                 _ => Err(anyhow::format_err!("unknown message {:?}", s)),
             },
             RespValue::Array(elements) => match elements.get(0) {
                 Some(RespValue::BulkString(s)) => match s.to_ascii_uppercase().as_str() {
-                    "PING" => Ok(Message::Ping),
+                    "PING" => Ok((Message::Ping, remainder)),
                     "ECHO" => match elements.get(1) {
-                        Some(RespValue::BulkString(s)) => Ok(Message::Echo(s.to_string())),
+                        Some(RespValue::BulkString(s)) => {
+                            Ok((Message::Echo(s.to_string()), remainder))
+                        }
                         _ => Err(anyhow::format_err!("malformed ECHO command")),
                     },
                     "COMMAND" => match elements.get(1) {
                         Some(RespValue::BulkString(s)) => match s.to_ascii_uppercase().as_str() {
-                            "DOCS" => Ok(Message::CommandDocs),
+                            "DOCS" => Ok((Message::CommandDocs, remainder)),
                             _ => Err(anyhow::format_err!("malformed COMMAND DOCS command")),
                         },
                         _ => Err(anyhow::format_err!("malformed COMMAND command")),
@@ -205,26 +218,32 @@ impl Message {
                             }
                             _ => None,
                         };
-                        Ok(Message::Set {
-                            key: key.to_string(),
-                            value: value.to_string(),
-                            expiry,
-                        })
+                        Ok((
+                            Message::Set {
+                                key: key.to_string(),
+                                value: value.to_string(),
+                                expiry,
+                            },
+                            remainder,
+                        ))
                     }
                     "GET" => {
                         let key = match elements.get(1) {
                             Some(RespValue::BulkString(s)) => *s,
                             _ => return Err(anyhow::format_err!("malformed GET command")),
                         };
-                        Ok(Message::GetRequest {
-                            key: key.to_string(),
-                        })
+                        Ok((
+                            Message::GetRequest {
+                                key: key.to_string(),
+                            },
+                            remainder,
+                        ))
                     }
                     "CONFIG" => match elements.get(1) {
                         Some(RespValue::BulkString(s)) => match s.to_ascii_uppercase().as_str() {
                             "GET" => match elements.get(2) {
                                 Some(RespValue::BulkString(s)) => match ConfigKey::deserialize(s) {
-                                    Ok(key) => Ok(Message::ConfigGetRequest { key }),
+                                    Ok(key) => Ok((Message::ConfigGetRequest { key }, remainder)),
                                     Err(_) => {
                                         Err(anyhow::format_err!("invalid config key {:?}", s))
                                     }
@@ -239,7 +258,7 @@ impl Message {
                         _ => Err(anyhow::format_err!("malformed CONFIG command")),
                     },
                     "KEYS" => match elements.get(1) {
-                        Some(RespValue::BulkString(_)) => Ok(Message::KeysRequest),
+                        Some(RespValue::BulkString(_)) => Ok((Message::KeysRequest, remainder)),
                         _ => Err(anyhow::format_err!("malformed KEYS command",)),
                     },
                     "INFO" => {
@@ -252,7 +271,7 @@ impl Message {
                                 _ => return Err(anyhow::format_err!("malformed INFO command",)),
                             }
                         }
-                        Ok(Message::InfoRequest { sections })
+                        Ok((Message::InfoRequest { sections }, remainder))
                     }
                     "REPLCONF" => {
                         let key = match elements.get(1) {
@@ -263,10 +282,13 @@ impl Message {
                             Some(RespValue::BulkString(s)) => *s,
                             _ => return Err(anyhow::format_err!("malformed REPLCONF command")),
                         };
-                        Ok(Message::ReplicationConfig {
-                            key: key.to_string(),
-                            value: value.to_string(),
-                        })
+                        Ok((
+                            Message::ReplicationConfig {
+                                key: key.to_string(),
+                                value: value.to_string(),
+                            },
+                            remainder,
+                        ))
                     }
                     "PSYNC" => {
                         let replication_id = match elements.get(1) {
@@ -277,10 +299,13 @@ impl Message {
                             Some(RespValue::BulkString(s)) => s.parse::<isize>()?,
                             _ => return Err(anyhow::format_err!("malformed PSYNC command")),
                         };
-                        Ok(Message::PSync {
-                            replication_id: replication_id.to_string(),
-                            offset,
-                        })
+                        Ok((
+                            Message::PSync {
+                                replication_id: replication_id.to_string(),
+                                offset,
+                            },
+                            remainder,
+                        ))
                     }
                     command => Err(anyhow::format_err!(
                         "unknown command {:?}",

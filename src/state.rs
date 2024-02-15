@@ -103,6 +103,10 @@ impl State {
         })
     }
 
+    pub fn is_master(&self) -> bool {
+        matches!(self.role_state, RoleState::Master(_))
+    }
+
     pub fn is_slave(&self) -> bool {
         matches!(self.role_state, RoleState::Slave(_))
     }
