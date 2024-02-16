@@ -316,7 +316,10 @@ impl Message {
                     "requests must start with a bulk string"
                 )),
             },
-            _ => Err(anyhow::format_err!("unsupported message")),
+            _ => Err(anyhow::format_err!(
+                "unsupported message: {:?}",
+                response_value
+            )),
         }
     }
 }

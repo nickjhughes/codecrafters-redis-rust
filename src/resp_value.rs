@@ -181,9 +181,10 @@ impl<'data> RespValue<'data> {
                 if let Some(terminator_index) = find_terminator(data) {
                     if let Ok(digits_str) = std::str::from_utf8(&data[1..terminator_index]) {
                         if let Ok(data_len) = digits_str.parse::<usize>() {
-                            if &data[terminator_index + 2 + data_len
-                                ..terminator_index + 2 + data_len + 2]
-                                != TERMINATOR
+                            if data.len() == terminator_index + 2 + data_len
+                                || &data[terminator_index + 2 + data_len
+                                    ..terminator_index + 2 + data_len + 2]
+                                    != TERMINATOR
                             {
                                 // Raw bytes
                                 let bytes =
@@ -347,9 +348,8 @@ fn find_terminator(data: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use bytes::BytesMut;
-
     use super::{find_terminator, RespValue};
+    use bytes::BytesMut;
 
     #[test]
     fn test_find_terminator() {
@@ -715,6 +715,19 @@ mod tests {
             let data = b"$0";
             let result = RespValue::deserialize(&data[..]);
             assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn raw_bytes() {
+        {
+            let data = b"$5\r\nhello";
+            let value = RespValue::deserialize(&data[..]).unwrap();
+            assert_eq!(value.0, RespValue::RawBytes(b"hello"));
+            assert!(value.1.is_empty());
+            let mut buf = BytesMut::new();
+            value.0.serialize(&mut buf);
+            assert_eq!(&buf[..], data);
         }
     }
 }

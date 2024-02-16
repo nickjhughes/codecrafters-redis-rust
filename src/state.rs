@@ -166,49 +166,55 @@ impl State {
         message: &Message,
         connection: &mut Connection,
     ) -> anyhow::Result<Option<Message>> {
-        match &mut self.role_state {
-            RoleState::Slave(slave_state) => match message {
-                Message::Pong => {
-                    if matches!(slave_state.handshake_state, HandshakeState::PingSent) {
-                        slave_state.handshake_state = HandshakeState::PongRcvd;
-                    }
-                    Ok(None)
-                }
-                Message::Ok => {
-                    if matches!(slave_state.handshake_state, HandshakeState::ReplConf1Sent) {
-                        slave_state.handshake_state = HandshakeState::ReplConf1Rcvd;
-                    } else if matches!(slave_state.handshake_state, HandshakeState::ReplConf2Sent) {
-                        slave_state.handshake_state = HandshakeState::ReplConf2Rcvd;
-                    }
-                    Ok(None)
-                }
-                Message::FullResync { .. } => {
-                    if matches!(slave_state.handshake_state, HandshakeState::PSyncSent) {
-                        slave_state.handshake_state = HandshakeState::Complete;
-                    }
-                    Ok(None)
-                }
-                Message::InfoRequest { sections } => {
-                    let mut section_maps = HashMap::new();
-                    if sections.is_empty() || sections.contains(&"replication".to_string()) {
-                        let mut section_map = HashMap::new();
-                        section_map.insert("role".to_string(), "slave".to_string());
-                        section_maps.insert("Replication".to_string(), section_map);
-                    }
-                    Ok(Some(Message::InfoResponse {
-                        sections: section_maps,
-                    }))
-                }
-                _ => Err(anyhow::format_err!(
-                    "invalid message from master {:?}",
-                    message
-                )),
+        match message {
+            Message::Ping => Ok(Some(Message::Pong)),
+            Message::Echo(message) => Ok(Some(Message::Echo(message.to_owned()))),
+            Message::CommandDocs => Ok(Some(Message::CommandDocs)),
+            Message::ConfigGetRequest { key } => match self.config.0.get(key) {
+                Some(values) => Ok(Some(Message::ConfigGetResponse(Some(ConfigGetResponse {
+                    key: *key,
+                    values: values.to_owned(),
+                })))),
+                None => Ok(Some(Message::ConfigGetResponse(None))),
             },
-            RoleState::Master(master_state) => {
-                match message {
-                    Message::Ping => Ok(Some(Message::Pong)),
-                    Message::Echo(message) => Ok(Some(Message::Echo(message.to_owned()))),
-                    Message::CommandDocs => Ok(Some(Message::CommandDocs)),
+            Message::KeysRequest => {
+                let keys = self.store.data.keys().cloned().collect();
+                Ok(Some(Message::KeysResponse { keys }))
+            }
+            Message::GetRequest { key } => match self.store.data.get(key) {
+                Some(value) => {
+                    match value.expiry {
+                        Some(StoreExpiry::Duration(d)) => {
+                            if Instant::now() > value.updated + d {
+                                // Key has expired
+                                Ok(Some(Message::GetResponse(GetResponse::NotFound)))
+                            } else {
+                                Ok(Some(Message::GetResponse(GetResponse::Found(
+                                    value.data.clone(),
+                                ))))
+                            }
+                        }
+                        Some(StoreExpiry::UnixTimestampMillis(t)) => {
+                            let unix_time =
+                                SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
+                            if t < unix_time {
+                                // Key has expired
+                                Ok(Some(Message::GetResponse(GetResponse::NotFound)))
+                            } else {
+                                Ok(Some(Message::GetResponse(GetResponse::Found(
+                                    value.data.clone(),
+                                ))))
+                            }
+                        }
+                        None => Ok(Some(Message::GetResponse(GetResponse::Found(
+                            value.data.clone(),
+                        )))),
+                    }
+                }
+                None => Ok(Some(Message::GetResponse(GetResponse::NotFound))),
+            },
+            _ => match &mut self.role_state {
+                RoleState::Slave(slave_state) => match message {
                     Message::Set { key, value, expiry } => {
                         let value = StoreValue {
                             data: value.to_string(),
@@ -216,98 +222,111 @@ impl State {
                             expiry: expiry.map(StoreExpiry::Duration),
                         };
                         self.store.data.insert(key.to_string(), value);
-                        Ok(Some(Message::Ok))
+                        if matches!(connection.ty, ConnectionType::Master) {
+                            Ok(None)
+                        } else {
+                            Ok(Some(Message::Ok))
+                        }
                     }
-                    Message::GetRequest { key } => match self.store.data.get(key) {
-                        Some(value) => {
-                            match value.expiry {
-                                Some(StoreExpiry::Duration(d)) => {
-                                    if Instant::now() > value.updated + d {
-                                        // Key has expired
-                                        Ok(Some(Message::GetResponse(GetResponse::NotFound)))
-                                    } else {
-                                        Ok(Some(Message::GetResponse(GetResponse::Found(
-                                            value.data.clone(),
-                                        ))))
-                                    }
-                                }
-                                Some(StoreExpiry::UnixTimestampMillis(t)) => {
-                                    let unix_time =
-                                        SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis()
-                                            as u64;
-                                    if t < unix_time {
-                                        // Key has expired
-                                        Ok(Some(Message::GetResponse(GetResponse::NotFound)))
-                                    } else {
-                                        Ok(Some(Message::GetResponse(GetResponse::Found(
-                                            value.data.clone(),
-                                        ))))
-                                    }
-                                }
-                                None => Ok(Some(Message::GetResponse(GetResponse::Found(
-                                    value.data.clone(),
-                                )))),
-                            }
+                    Message::DatabaseFile(_) => Ok(None),
+                    Message::Pong => {
+                        if matches!(slave_state.handshake_state, HandshakeState::PingSent) {
+                            slave_state.handshake_state = HandshakeState::PongRcvd;
                         }
-                        None => Ok(Some(Message::GetResponse(GetResponse::NotFound))),
-                    },
-                    Message::ConfigGetRequest { key } => match self.config.0.get(key) {
-                        Some(values) => {
-                            Ok(Some(Message::ConfigGetResponse(Some(ConfigGetResponse {
-                                key: *key,
-                                values: values.to_owned(),
-                            }))))
+                        Ok(None)
+                    }
+                    Message::Ok => {
+                        if matches!(slave_state.handshake_state, HandshakeState::ReplConf1Sent) {
+                            slave_state.handshake_state = HandshakeState::ReplConf1Rcvd;
+                        } else if matches!(
+                            slave_state.handshake_state,
+                            HandshakeState::ReplConf2Sent
+                        ) {
+                            slave_state.handshake_state = HandshakeState::ReplConf2Rcvd;
                         }
-                        None => Ok(Some(Message::ConfigGetResponse(None))),
-                    },
-                    Message::KeysRequest => {
-                        let keys = self.store.data.keys().cloned().collect();
-                        Ok(Some(Message::KeysResponse { keys }))
+                        Ok(None)
+                    }
+                    Message::FullResync { .. } => {
+                        if matches!(slave_state.handshake_state, HandshakeState::PSyncSent) {
+                            slave_state.handshake_state = HandshakeState::Complete;
+                        }
+                        Ok(None)
                     }
                     Message::InfoRequest { sections } => {
                         let mut section_maps = HashMap::new();
                         if sections.is_empty() || sections.contains(&"replication".to_string()) {
                             let mut section_map = HashMap::new();
-                            section_map.insert("role".to_string(), "master".to_string());
-                            section_map.insert(
-                                "master_replid".to_string(),
-                                master_state.replication_id.clone(),
-                            );
-                            section_map.insert(
-                                "master_repl_offset".to_string(),
-                                master_state.replication_offset.to_string(),
-                            );
+                            section_map.insert("role".to_string(), "slave".to_string());
                             section_maps.insert("Replication".to_string(), section_map);
                         }
                         Ok(Some(Message::InfoResponse {
                             sections: section_maps,
                         }))
                     }
-                    Message::ReplicationConfig { .. } => {
-                        // We know we're connected to a slave, rather than a client, now
-                        connection.ty = ConnectionType::Slave;
-                        Ok(Some(Message::Ok))
-                    }
-                    Message::PSync {
-                        replication_id,
-                        offset,
-                    } => {
-                        if replication_id == "?" && *offset == -1 {
-                            master_state.send_rdb = true;
-                            Ok(Some(Message::FullResync {
-                                replication_id: master_state.replication_id.clone(),
-                                offset: master_state.replication_offset,
-                            }))
-                        } else {
-                            Ok(None)
-                        }
-                    }
                     _ => Err(anyhow::format_err!(
-                        "invalid message from client/replica {:?}",
+                        "invalid message from master {:?}",
                         message
                     )),
+                },
+                RoleState::Master(master_state) => {
+                    match message {
+                        Message::Ok => Ok(None),
+                        Message::Pong => Ok(None),
+                        Message::Set { key, value, expiry } => {
+                            let value = StoreValue {
+                                data: value.to_string(),
+                                updated: Instant::now(),
+                                expiry: expiry.map(StoreExpiry::Duration),
+                            };
+                            self.store.data.insert(key.to_string(), value);
+                            Ok(Some(Message::Ok))
+                        }
+                        Message::InfoRequest { sections } => {
+                            let mut section_maps = HashMap::new();
+                            if sections.is_empty() || sections.contains(&"replication".to_string())
+                            {
+                                let mut section_map = HashMap::new();
+                                section_map.insert("role".to_string(), "master".to_string());
+                                section_map.insert(
+                                    "master_replid".to_string(),
+                                    master_state.replication_id.clone(),
+                                );
+                                section_map.insert(
+                                    "master_repl_offset".to_string(),
+                                    master_state.replication_offset.to_string(),
+                                );
+                                section_maps.insert("Replication".to_string(), section_map);
+                            }
+                            Ok(Some(Message::InfoResponse {
+                                sections: section_maps,
+                            }))
+                        }
+                        Message::ReplicationConfig { .. } => {
+                            // We know we're connected to a slave, rather than a client, now
+                            connection.ty = ConnectionType::Slave;
+                            Ok(Some(Message::Ok))
+                        }
+                        Message::PSync {
+                            replication_id,
+                            offset,
+                        } => {
+                            if replication_id == "?" && *offset == -1 {
+                                master_state.send_rdb = true;
+                                Ok(Some(Message::FullResync {
+                                    replication_id: master_state.replication_id.clone(),
+                                    offset: master_state.replication_offset,
+                                }))
+                            } else {
+                                Ok(None)
+                            }
+                        }
+                        _ => Err(anyhow::format_err!(
+                            "invalid message from client/replica {:?}",
+                            message
+                        )),
+                    }
                 }
-            }
+            },
         }
     }
 }
