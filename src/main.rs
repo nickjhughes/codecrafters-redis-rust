@@ -130,6 +130,7 @@ async fn handle_connection(
                                     let (s, r) = unbounded_channel::<Message>();
                                     reciever = Some(r);
                                     replica_senders.lock().await.push(s);
+                                    state.lock().await.add_replica();
                                 }
 
                                 if state.lock().await.is_master()

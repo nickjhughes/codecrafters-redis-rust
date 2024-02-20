@@ -57,6 +57,7 @@ enum HandshakeState {
 struct MasterState {
     replication_id: String,
     replication_offset: isize,
+    num_replicas: usize,
 }
 
 impl Default for MasterState {
@@ -64,6 +65,7 @@ impl Default for MasterState {
         MasterState {
             replication_id: REPLICATION_ID.into(),
             replication_offset: 0,
+            num_replicas: 0,
         }
     }
 }
@@ -328,7 +330,9 @@ impl State {
                                 Ok(None)
                             }
                         }
-                        Message::Wait { .. } => Ok(Some(Message::WaitReply { num_replicas: 0 })),
+                        Message::Wait { .. } => Ok(Some(Message::WaitReply {
+                            num_replicas: master_state.num_replicas,
+                        })),
                         _ => Err(anyhow::format_err!(
                             "invalid message from client/replica {:?}",
                             message
@@ -347,6 +351,15 @@ impl State {
                 }
             }
             RoleState::Master(_) => {}
+        }
+    }
+
+    pub fn add_replica(&mut self) {
+        match &mut self.role_state {
+            RoleState::Slave(_) => {}
+            RoleState::Master(master_state) => {
+                master_state.num_replicas += 1;
+            }
         }
     }
 }
