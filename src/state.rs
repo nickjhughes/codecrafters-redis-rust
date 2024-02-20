@@ -1,5 +1,4 @@
 use std::{
-    ascii::AsciiExt,
     collections::HashMap,
     path::PathBuf,
     time::{Instant, SystemTime, UNIX_EPOCH},
@@ -57,7 +56,6 @@ enum HandshakeState {
 struct MasterState {
     replication_id: String,
     replication_offset: isize,
-    send_rdb: bool,
 }
 
 impl Default for MasterState {
@@ -65,7 +63,6 @@ impl Default for MasterState {
         MasterState {
             replication_id: REPLICATION_ID.into(),
             replication_offset: 0,
-            send_rdb: false,
         }
     }
 }
@@ -151,9 +148,9 @@ impl State {
                     None
                 }
             }
-            RoleState::Master(master_state) => {
-                if matches!(connection.ty, ConnectionType::Slave) && master_state.send_rdb {
-                    master_state.send_rdb = false;
+            RoleState::Master(_) => {
+                if matches!(connection.ty, ConnectionType::Slave) && connection.send_rdb {
+                    connection.send_rdb = false;
                     Some(Message::DatabaseFile(EMPTY_RDB_FILE.to_vec()))
                 } else {
                     None
@@ -320,7 +317,7 @@ impl State {
                             offset,
                         } => {
                             if replication_id == "?" && *offset == -1 {
-                                master_state.send_rdb = true;
+                                connection.send_rdb = true;
                                 Ok(Some(Message::FullResync {
                                     replication_id: master_state.replication_id.clone(),
                                     offset: master_state.replication_offset,

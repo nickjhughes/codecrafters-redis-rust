@@ -33,6 +33,7 @@ const REPLICATION_ID: &str = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
 #[derive(Debug)]
 pub struct Connection {
     pub ty: ConnectionType,
+    pub send_rdb: bool,
 }
 
 #[derive(Debug)]
@@ -55,6 +56,7 @@ async fn handle_connection(
 
     let mut connection = Connection {
         ty: connection_type,
+        send_rdb: false,
     };
 
     loop {
