@@ -36,6 +36,7 @@ enum RoleState {
 #[derive(Default)]
 struct SlaveState {
     handshake_state: HandshakeState,
+    offset: usize,
 }
 
 #[derive(Default)]
@@ -165,7 +166,6 @@ impl State {
         connection: &mut Connection,
     ) -> anyhow::Result<Option<Message>> {
         match message {
-            Message::Ping => Ok(Some(Message::Pong)),
             Message::Echo(message) => Ok(Some(Message::Echo(message.to_owned()))),
             Message::CommandDocs => Ok(Some(Message::CommandDocs)),
             Message::ConfigGetRequest { key } => match self.config.0.get(key) {
@@ -213,6 +213,7 @@ impl State {
             },
             _ => match &mut self.role_state {
                 RoleState::Slave(slave_state) => match message {
+                    Message::Ping => Ok(None),
                     Message::Set { key, value, expiry } => {
                         let value = StoreValue {
                             data: value.to_string(),
@@ -266,7 +267,7 @@ impl State {
                     {
                         Ok(Some(Message::ReplicationConfig {
                             key: "ACK".into(),
-                            value: "0".into(),
+                            value: slave_state.offset.to_string(),
                         }))
                     }
                     _ => Err(anyhow::format_err!(
@@ -276,6 +277,7 @@ impl State {
                 },
                 RoleState::Master(master_state) => {
                     match message {
+                        Message::Ping => Ok(Some(Message::Pong)),
                         Message::Ok => Ok(None),
                         Message::Pong => Ok(None),
                         Message::Set { key, value, expiry } => {
@@ -333,6 +335,17 @@ impl State {
                     }
                 }
             },
+        }
+    }
+
+    pub fn increment_offset(&mut self, bytes: usize) {
+        match &mut self.role_state {
+            RoleState::Slave(slave_state) => {
+                if matches!(slave_state.handshake_state, HandshakeState::Complete) {
+                    slave_state.offset += bytes
+                }
+            }
+            RoleState::Master(_) => {}
         }
     }
 }

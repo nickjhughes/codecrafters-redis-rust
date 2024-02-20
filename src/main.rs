@@ -110,6 +110,19 @@ async fn handle_connection(
                                         .expect("failed to write to stream");
                                 }
 
+                                if state.lock().await.is_slave()
+                                    && matches!(connection.ty, ConnectionType::Master)
+                                    && !matches!(
+                                        message,
+                                        Message::DatabaseFile(_) | Message::FullResync { .. }
+                                    )
+                                {
+                                    let mut msg_buf = BytesMut::new();
+                                    message.serialize(&mut msg_buf);
+                                    let message_len = msg_buf.len();
+                                    state.lock().await.increment_offset(message_len);
+                                }
+
                                 if state.lock().await.is_master()
                                     && matches!(connection.ty, ConnectionType::Slave)
                                     && reciever.is_none()
