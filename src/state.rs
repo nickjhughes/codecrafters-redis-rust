@@ -328,6 +328,7 @@ impl State {
                                 Ok(None)
                             }
                         }
+                        Message::Wait { .. } => Ok(Some(Message::WaitReply { num_replicas: 0 })),
                         _ => Err(anyhow::format_err!(
                             "invalid message from client/replica {:?}",
                             message

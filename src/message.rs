@@ -46,6 +46,13 @@ pub enum Message {
     },
     ConfigGetResponse(Option<ConfigGetResponse>),
     DatabaseFile(Vec<u8>),
+    Wait {
+        num_replicas: usize,
+        timeout: Duration,
+    },
+    WaitReply {
+        num_replicas: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -147,6 +154,15 @@ impl Message {
                 offset,
             } => RespValue::OwnedSimpleString(format!("FULLRESYNC {replication_id} {offset}")),
             Message::DatabaseFile(bytes) => RespValue::RawBytes(bytes),
+            Message::Wait {
+                num_replicas,
+                timeout,
+            } => RespValue::Array(vec![
+                RespValue::BulkString("WAIT"),
+                RespValue::OwnedBulkString(num_replicas.to_string()),
+                RespValue::OwnedBulkString(timeout.as_millis().to_string()),
+            ]),
+            Message::WaitReply { num_replicas } => RespValue::Integer(*num_replicas as i64),
         };
         response_value.serialize(buf);
     }
@@ -303,6 +319,25 @@ impl Message {
                             Message::PSync {
                                 replication_id: replication_id.to_string(),
                                 offset,
+                            },
+                            remainder,
+                        ))
+                    }
+                    "WAIT" => {
+                        let num_replicas = match elements.get(1) {
+                            Some(RespValue::BulkString(s)) => s.parse::<usize>()?,
+                            _ => return Err(anyhow::format_err!("malformed WAIT command")),
+                        };
+                        let timeout = match elements.get(2) {
+                            Some(RespValue::BulkString(s)) => {
+                                Duration::from_millis(s.parse::<u64>()?)
+                            }
+                            _ => return Err(anyhow::format_err!("malformed WAIT command")),
+                        };
+                        Ok((
+                            Message::Wait {
+                                num_replicas,
+                                timeout,
                             },
                             remainder,
                         ))
