@@ -1,4 +1,5 @@
 use std::{
+    ascii::AsciiExt,
     collections::HashMap,
     path::PathBuf,
     time::{Instant, SystemTime, UNIX_EPOCH},
@@ -261,6 +262,14 @@ impl State {
                         }
                         Ok(Some(Message::InfoResponse {
                             sections: section_maps,
+                        }))
+                    }
+                    Message::ReplicationConfig { key, value }
+                        if key.to_ascii_uppercase() == "GETACK" && value == "*" =>
+                    {
+                        Ok(Some(Message::ReplicationConfig {
+                            key: "ACK".into(),
+                            value: "0".into(),
                         }))
                     }
                     _ => Err(anyhow::format_err!(
